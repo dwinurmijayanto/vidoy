@@ -169,7 +169,7 @@ document.getElementById('searchForm').addEventListener('submit', async (e) => {
     hideAll();
     
     try {
-        const apiUrl = `https://upload.vbi1.my.id/vidoy/vidoy2026.php?url=${encodeURIComponent(url)}`;
+        const apiUrl = `/api/index.php?url=${encodeURIComponent(url)}`;
         const response = await fetch(apiUrl);
         const data = await response.json();
         
