@@ -1,0 +1,19 @@
+{
+  "name": "vidoydoodstream-downloader-api",
+  "version": "1.0.0",
+  "description": "VIDOY Video Downloader API for Vercel",
+  "main": "api/index.php",
+  "scripts": {
+    "deploy": "vercel --prod"
+  },
+  "keywords": [
+    "vidoy",
+    "doodtream",
+    "downloader",
+    "api",
+    "vercel",
+    "php"
+  ],
+  "author": "VBI1",
+  "license": "MIT"
+}
