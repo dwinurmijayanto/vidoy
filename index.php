@@ -248,7 +248,6 @@ function createVideoCard(video, index) {
     const name = video.title || 'Unknown';
     const thumbnail = video.thumbnail || '';
     const videoUrl = video.download_url || '#';
-    const embedUrl = video.embed_url || '#';
     
     const card = document.createElement('div');
     card.className = `card-hover bg-white/5 backdrop-blur-lg rounded-2xl overflow-hidden border-2 ${isError ? 'border-red-500/50' : 'border-purple-500/20'}`;
@@ -261,19 +260,13 @@ function createVideoCard(video, index) {
         `<div class="bg-red-500/20 border border-red-500/50 rounded-lg px-3 py-2 text-red-300 text-sm">❌ ${escapeHtml(video.error || 'Unknown error')}</div>` : '';
     
     const actionButtons = !isError ? `
-        <div class="grid grid-cols-2 gap-2">
-            <a href="${escapeHtml(embedUrl)}" target="_blank" rel="noopener noreferrer" class="block w-full bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white py-3 rounded-xl font-bold transition-all text-center flex items-center justify-center gap-2 shadow-lg hover:shadow-blue-500/50">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-width="2"/><polygon points="10 8 16 12 10 16 10 8" fill="currentColor"/></svg>
-                <span>Tonton</span>
-            </a>
-            <a href="${escapeHtml(videoUrl)}" target="_blank" rel="noopener noreferrer" download class="block w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white py-3 rounded-xl font-bold transition-all text-center flex items-center justify-center gap-2 shadow-lg hover:shadow-purple-500/50">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" stroke-width="2"/><polyline points="7 10 12 15 17 10" stroke-width="2"/><line x1="12" y1="15" x2="12" y2="3" stroke-width="2"/></svg>
-                <span>Download</span>
-            </a>
-        </div>` : '';
+        <a href="${escapeHtml(videoUrl)}" target="_blank" rel="noopener noreferrer" class="block w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white py-3 rounded-xl font-bold transition-all text-center flex items-center justify-center gap-2 shadow-lg hover:shadow-purple-500/50">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-width="2"/><polygon points="10 8 16 12 10 16 10 8" fill="currentColor"/></svg>
+            <span>Tonton</span>
+        </a>` : '';
     
     card.innerHTML = `
-        <a href="${isError ? '#' : escapeHtml(embedUrl)}" target="_blank" rel="noopener noreferrer" class="block relative group overflow-hidden ${isError ? 'pointer-events-none' : ''}">
+        <a href="${isError ? '#' : escapeHtml(videoUrl)}" target="_blank" rel="noopener noreferrer" class="block relative group overflow-hidden ${isError ? 'pointer-events-none' : ''}">
             ${thumbnailHtml}
             ${!isError ? '<div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center"><svg class="w-16 h-16 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-width="2"/><polygon points="10 8 16 12 10 16 10 8" fill="currentColor"/></svg></div>' : ''}
         </a>
