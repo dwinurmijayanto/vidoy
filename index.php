@@ -49,7 +49,7 @@
                 <input
                     type="text"
                     id="urlInput"
-                    placeholder="Masukkan URL Vidoy (contoh: https://upl.ad/f/xxxxxxxxx)"
+                    placeholder="Masukkan URL Vidoy (contoh: https://vid7.online/f/xxxxxxxxx)"
                     class="w-full px-6 py-5 pr-36 rounded-2xl bg-white/10 backdrop-blur-lg border-2 border-purple-500/30 text-white text-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
                     required
                 />
@@ -67,7 +67,7 @@
                 </button>
             </form>
             <p class="text-gray-400 text-sm mt-3 text-center">
-                💡 API akan otomatis mengambil <strong class="text-purple-400">semua video</strong> dari folder
+                💡 API akan otomatis mengambil <strong class="text-purple-400">semua video</strong> dari folder (/f/)
             </p>
         </div>
 
@@ -123,7 +123,7 @@
             </svg>
             <h3 class="text-gray-300 text-2xl font-bold mb-3">Siap untuk download?</h3>
             <p class="text-gray-400 text-lg mb-2">Masukkan URL Vidoy di atas untuk memulai</p>
-            <p class="text-gray-500 text-sm">Contoh: https://upl.ad/f/xxxxxxxxxx</p>
+            <p class="text-gray-500 text-sm">Contoh: https://vid7.online/f/abc123 (folder) atau /d/abc123 (single video)</p>
             
             <div class="mt-12 max-w-3xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div class="bg-white/5 backdrop-blur rounded-xl p-6 border border-purple-500/20">
@@ -169,20 +169,35 @@ document.getElementById('searchForm').addEventListener('submit', async (e) => {
     hideAll();
     
     try {
-        const apiUrl = `/api/index.php?url=${encodeURIComponent(url)}`;
+        // Panggil API PHP
+        const apiUrl = `api.php?url=${encodeURIComponent(url)}`;
         const response = await fetch(apiUrl);
         const data = await response.json();
         
+        console.log('API Response:', data); // Debug
+        
         setLoading(false);
         
-        if (data.success && data.videos && data.videos.length > 0) {
-            displayVideos(data);
+        // Cek apakah ada video yang berhasil
+        if (data.success) {
+            // Untuk folder batch
+            if (data.type === 'folder' && data.videos && data.videos.length > 0) {
+                displayVideos(data);
+            }
+            // Untuk single video
+            else if (data.data && data.data.download_url) {
+                displaySingleVideo(data);
+            }
+            else {
+                showError(data.message || 'Tidak ada video yang ditemukan');
+            }
         } else {
-            showError(data.message || 'Tidak ada video yang ditemukan');
+            showError(data.message || data.error || 'Tidak ada video yang ditemukan');
         }
     } catch (error) {
         setLoading(false);
         showError('Gagal mengambil data dari API: ' + error.message);
+        console.error('Error:', error);
     }
 });
 
@@ -216,6 +231,27 @@ function showError(message) {
     hideAll();
     document.getElementById('errorText').textContent = message;
     document.getElementById('errorMessage').classList.remove('hidden');
+}
+
+function displaySingleVideo(data) {
+    // Convert single video to array format
+    const videoData = {
+        success: true,
+        type: 'single',
+        total_videos: 1,
+        processed: 1,
+        success_count: 1,
+        videos: [{
+            success: true,
+            video_id: data.data.video_id,
+            title: data.data.title,
+            download_url: data.data.download_url,
+            thumbnail: data.data.thumbnail,
+            embed_url: data.data.embed_url
+        }]
+    };
+    
+    displayVideos(videoData);
 }
 
 function displayVideos(data) {
