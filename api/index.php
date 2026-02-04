@@ -1,19 +1,4 @@
-if (empty($videoList)) {
-            // Berikan info lebih detail untuk debugging
-            return [
-                'success' => false,
-                'error' => 'No videos found in this folder',
-                'folder_id' => $folderId,
-                'total_videos' => 0,
-                'videos' => [],
-                'debug_info' => [
-                    'folder_url' => $normalizedUrl,
-                    'content_length' => strlen($folderContent),
-                    'content_preview' => substr($folderContent, 0, 1000),
-                    'message' => 'Tidak ada video yang ditemukan. Silakan periksa URL folder atau coba URL lain.'
-                ]
-            ];
-        }<?php
+<?php
 /**
  * API Endpoint untuk Download Video dari vid7.online
  * Fixed Version - Updated extraction patterns
@@ -181,6 +166,13 @@ class Vid7Downloader {
         if (preg_match($pattern, $content, $matches)) {
             return trim(strip_tags($matches[1]));
         }
+        
+        // Try alternative pattern
+        $pattern2 = '/<strong[^>]*>(.*?)<\/strong>[^<]*<[^>]*href="\/[dev]\/' . preg_quote($videoId, '/') . '"/is';
+        if (preg_match($pattern2, $content, $matches)) {
+            return trim(strip_tags($matches[1]));
+        }
+        
         return "Video {$videoId}";
     }
     
@@ -237,6 +229,7 @@ class Vid7Downloader {
             return [
                 'success' => false,
                 'error' => 'No videos found in this folder',
+                'message' => 'Tidak ada video yang ditemukan. Silakan periksa URL folder atau coba URL lain.',
                 'folder_id' => $folderId,
                 'total_videos' => 0,
                 'videos' => [],
@@ -512,6 +505,7 @@ class Vid7Downloader {
             return [
                 'success' => false,
                 'error' => 'Failed to fetch IP endpoint',
+                'message' => 'Gagal mengambil endpoint IP',
                 'debug' => $this->debug ? [
                     'video_id' => $videoId,
                     'original_domain' => $originalDomain,
@@ -535,6 +529,7 @@ class Vid7Downloader {
             return [
                 'success' => false,
                 'error' => 'Failed to fetch embed page',
+                'message' => 'Gagal mengambil halaman embed',
                 'tried_url' => $embedUrl
             ];
         }
@@ -545,6 +540,7 @@ class Vid7Downloader {
             return [
                 'success' => false,
                 'error' => 'Failed to extract video URL',
+                'message' => 'Gagal mengekstrak URL video',
                 'debug' => $this->debug ? [
                     'embed_content_preview' => substr($embedContent, 0, 500)
                 ] : null
