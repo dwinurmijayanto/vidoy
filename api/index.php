@@ -546,9 +546,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'success' => false,
             'error' => 'Missing parameters',
             'usage' => [
-                'get_info' => '?url=https://vid7.online/e/VIDEO_ID',
+                'get_info' => '?url=https://vid7.online/e/VIDEO_ID or /d/VIDEO_ID (single video)',
+                'get_folder' => '?url=https://vid7.online/f/FOLDER_ID (batch all videos)',
                 'get_info_debug' => '?url=https://vid7.online/e/VIDEO_ID&debug=1',
                 'download' => '?video_url=VIDEO_URL&download=1&filename=video.mp4'
+            ],
+            'notes' => [
+                '/d/ and /e/' => 'Single video URLs',
+                '/f/' => 'Folder URL - automatically processes all videos in batch'
             ]
         ], JSON_PRETTY_PRINT);
     }
