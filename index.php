@@ -161,7 +161,7 @@
 // Test API Connection
 document.getElementById('testApiBtn').addEventListener('click', async () => {
     try {
-        const response = await fetch('api.php?test=1');
+        const response = await fetch('/api/index.php?test=1');
         const data = await response.json();
         
         if (data.success) {
@@ -175,7 +175,7 @@ document.getElementById('testApiBtn').addEventListener('click', async () => {
     } catch (error) {
         alert('❌ Cannot connect to API\n\n' +
               'Error: ' + error.message + '\n\n' +
-              'Pastikan file api.php ada di folder yang sama dengan index.html');
+              'Pastikan file api/index.php ada di folder yang sama dengan index.html');
     }
 });
 
@@ -196,7 +196,7 @@ document.getElementById('searchForm').addEventListener('submit', async (e) => {
     
     try {
         // Panggil API PHP
-        const apiUrl = `api.php?url=${encodeURIComponent(url)}`;
+        const apiUrl = `/api/index.php?url=${encodeURIComponent(url)}`;
         console.log('Calling API:', apiUrl);
         
         const response = await fetch(apiUrl);
@@ -245,11 +245,11 @@ document.getElementById('searchForm').addEventListener('submit', async (e) => {
         let errorMessage = 'Gagal mengambil data dari API';
         
         if (error.message.includes('HTTP error')) {
-            errorMessage = `Server error: ${error.message}. Periksa apakah api.php dapat diakses.`;
+            errorMessage = `Server error: ${error.message}. Periksa apakah api/index.php dapat diakses.`;
         } else if (error.message.includes('JSON')) {
-            errorMessage = `API mengembalikan response bukan JSON. Periksa file api.php dan pastikan tidak ada error.`;
+            errorMessage = `API mengembalikan response bukan JSON. Periksa file api/index.php dan pastikan tidak ada error.`;
         } else if (error.message.includes('Failed to fetch')) {
-            errorMessage = `Tidak dapat terhubung ke API. Pastikan file api.php ada di folder yang sama dengan index.html`;
+            errorMessage = `Tidak dapat terhubung ke API. Pastikan file api/index.php ada di folder yang sama dengan index.html`;
         } else {
             errorMessage = `Error: ${error.message}`;
         }
