@@ -69,6 +69,11 @@
             <p class="text-gray-400 text-sm mt-3 text-center">
                 💡 API akan otomatis mengambil <strong class="text-purple-400">semua video</strong> dari folder (/f/)
             </p>
+            <div class="text-center mt-2">
+                <button id="testApiBtn" class="text-gray-500 hover:text-purple-400 text-xs underline">
+                    Test API Connection
+                </button>
+            </div>
         </div>
 
         <!-- Share Info -->
@@ -153,6 +158,27 @@
 </div>
 
 <script>
+// Test API Connection
+document.getElementById('testApiBtn').addEventListener('click', async () => {
+    try {
+        const response = await fetch('api.php?test=1');
+        const data = await response.json();
+        
+        if (data.success) {
+            alert('✅ API Connection Success!\n\n' + 
+                  'Timestamp: ' + data.timestamp + '\n' +
+                  'PHP Version: ' + data.php_version + '\n' +
+                  'cURL Available: ' + (data.curl_available ? 'Yes' : 'No'));
+        } else {
+            alert('❌ API Test Failed');
+        }
+    } catch (error) {
+        alert('❌ Cannot connect to API\n\n' +
+              'Error: ' + error.message + '\n\n' +
+              'Pastikan file api.php ada di folder yang sama dengan index.html');
+    }
+});
+
 document.getElementById('searchForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     
@@ -171,10 +197,28 @@ document.getElementById('searchForm').addEventListener('submit', async (e) => {
     try {
         // Panggil API PHP
         const apiUrl = `api.php?url=${encodeURIComponent(url)}`;
-        const response = await fetch(apiUrl);
-        const data = await response.json();
+        console.log('Calling API:', apiUrl);
         
-        console.log('API Response:', data); // Debug
+        const response = await fetch(apiUrl);
+        
+        console.log('Response status:', response.status);
+        console.log('Response headers:', [...response.headers.entries()]);
+        
+        // Cek apakah response OK
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        // Cek content type
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+            const text = await response.text();
+            console.error('Non-JSON response:', text);
+            throw new Error('Server tidak mengembalikan JSON. Mungkin terjadi error pada API.');
+        }
+        
+        const data = await response.json();
+        console.log('API Response:', data);
         
         setLoading(false);
         
@@ -196,8 +240,21 @@ document.getElementById('searchForm').addEventListener('submit', async (e) => {
         }
     } catch (error) {
         setLoading(false);
-        showError('Gagal mengambil data dari API: ' + error.message);
-        console.error('Error:', error);
+        console.error('Error details:', error);
+        
+        let errorMessage = 'Gagal mengambil data dari API';
+        
+        if (error.message.includes('HTTP error')) {
+            errorMessage = `Server error: ${error.message}. Periksa apakah api.php dapat diakses.`;
+        } else if (error.message.includes('JSON')) {
+            errorMessage = `API mengembalikan response bukan JSON. Periksa file api.php dan pastikan tidak ada error.`;
+        } else if (error.message.includes('Failed to fetch')) {
+            errorMessage = `Tidak dapat terhubung ke API. Pastikan file api.php ada di folder yang sama dengan index.html`;
+        } else {
+            errorMessage = `Error: ${error.message}`;
+        }
+        
+        showError(errorMessage);
     }
 });
 
