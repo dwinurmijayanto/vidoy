@@ -1,4 +1,19 @@
-<?php
+if (empty($videoList)) {
+            // Berikan info lebih detail untuk debugging
+            return [
+                'success' => false,
+                'error' => 'No videos found in this folder',
+                'folder_id' => $folderId,
+                'total_videos' => 0,
+                'videos' => [],
+                'debug_info' => [
+                    'folder_url' => $normalizedUrl,
+                    'content_length' => strlen($folderContent),
+                    'content_preview' => substr($folderContent, 0, 1000),
+                    'message' => 'Tidak ada video yang ditemukan. Silakan periksa URL folder atau coba URL lain.'
+                ]
+            ];
+        }<?php
 /**
  * API Endpoint untuk Download Video dari vid7.online
  * Fixed Version - Updated extraction patterns
@@ -71,27 +86,74 @@ class Vid7Downloader {
         
         $content = $this->fetchContent($folderUrl);
         if (!$content) {
+            $this->log("ERROR: Failed to fetch content");
             return null;
         }
+        
+        $this->log("Content fetched successfully, length: " . strlen($content));
         
         $videos = [];
         $seenIds = [];
         
         // Multiple patterns untuk ekstraksi video links
         $patterns = [
+            // Pattern 1: Standard href dengan quotes
             '/href=["\']\\/([dev])\\/([a-z0-9]+)["\']/i',
-            '/\\/([dev])\\/([a-z0-9]+)/i',
-            '/<a[^>]*href=["\']\\/([dev])\\/([a-z0-9]+)["\']/i'
+            // Pattern 2: Tanpa quotes
+            '/href=\\/([dev])\\/([a-z0-9]+)/i',
+            // Pattern 3: Dalam tag <a>
+            '/<a[^>]*href=["\']\\/([dev])\\/([a-z0-9]+)["\']/i',
+            // Pattern 4: URL lengkap
+            '/https?:\\/\\/[^\\/]+\\/([dev])\\/([a-z0-9]+)/i',
+            // Pattern 5: Onclick atau data attributes
+            '/(?:onclick|data-[^=]*)=["\']*[^\'"]*\\/([dev])\\/([a-z0-9]+)/i',
         ];
         
-        foreach ($patterns as $pattern) {
+        foreach ($patterns as $patternIndex => $pattern) {
             preg_match_all($pattern, $content, $matches, PREG_SET_ORDER);
             
+            $this->log("Pattern $patternIndex found " . count($matches) . " matches");
+            
             foreach ($matches as $match) {
-                $path = $match[1];
+                if (count($match) >= 3) {
+                    $path = strtolower($match[1]);
+                    $videoId = $match[2];
+                    
+                    // Validate path
+                    if (!in_array($path, ['d', 'e', 'v'])) {
+                        continue;
+                    }
+                    
+                    // Avoid duplicates
+                    if (isset($seenIds[$videoId])) {
+                        continue;
+                    }
+                    $seenIds[$videoId] = true;
+                    
+                    $videos[] = [
+                        'video_id' => $videoId,
+                        'path' => $path,
+                        'url' => "/{$path}/{$videoId}"
+                    ];
+                    
+                    $this->log("Found video: {$path}/{$videoId}");
+                }
+            }
+        }
+        
+        $this->log("Total unique videos found: " . count($videos));
+        
+        // Jika tidak ada video ditemukan, coba cari pattern lain dalam HTML
+        if (empty($videos)) {
+            $this->log("No videos found with standard patterns, trying alternative search...");
+            
+            // Cari semua kemungkinan video ID (8-12 karakter alfanumerik)
+            preg_match_all('/(?:\/|href=["\']\/)([dev])\/([a-z0-9]{8,12})/i', $content, $altMatches, PREG_SET_ORDER);
+            
+            foreach ($altMatches as $match) {
+                $path = strtolower($match[1]);
                 $videoId = $match[2];
                 
-                // Avoid duplicates
                 if (isset($seenIds[$videoId])) {
                     continue;
                 }
@@ -102,14 +164,9 @@ class Vid7Downloader {
                     'path' => $path,
                     'url' => "/{$path}/{$videoId}"
                 ];
+                
+                $this->log("Found video (alternative): {$path}/{$videoId}");
             }
-        }
-        
-        $this->log("Found " . count($videos) . " videos in folder");
-        
-        // Jika tidak ada video ditemukan, log HTML untuk debugging
-        if (empty($videos) && $this->debug) {
-            $this->log("HTML Preview:", substr($content, 0, 1000));
         }
         
         return $videos;
@@ -135,7 +192,8 @@ class Vid7Downloader {
         if (!$folderId) {
             return [
                 'success' => false,
-                'error' => 'Invalid folder URL format'
+                'error' => 'Invalid folder URL format',
+                'message' => 'Format URL folder tidak valid. Pastikan menggunakan format: https://domain/f/FOLDER_ID'
             ];
         }
         
@@ -144,32 +202,49 @@ class Vid7Downloader {
         $originalDomain = $this->extractBaseDomain($folderUrl);
         
         $this->log("Processing folder: $folderId");
+        $this->log("Normalized URL: $normalizedUrl");
         
         // Fetch folder content
         $folderContent = $this->fetchContent($normalizedUrl);
         if (!$folderContent) {
             return [
                 'success' => false,
-                'error' => 'Failed to fetch folder page'
+                'error' => 'Failed to fetch folder page',
+                'message' => 'Gagal mengambil halaman folder. Pastikan URL valid dan dapat diakses.',
+                'debug_info' => [
+                    'folder_id' => $folderId,
+                    'tried_url' => $normalizedUrl
+                ]
             ];
         }
+        
+        $this->log("Folder content length: " . strlen($folderContent));
         
         // Extract video URLs
         $videoList = $this->extractVideoUrlsFromFolder($normalizedUrl);
         if ($videoList === null) {
             return [
                 'success' => false,
-                'error' => 'Failed to extract videos from folder'
+                'error' => 'Failed to extract videos from folder',
+                'message' => 'Gagal mengekstrak video dari folder',
+                'debug_info' => [
+                    'content_preview' => substr($folderContent, 0, 500)
+                ]
             ];
         }
         
         if (empty($videoList)) {
             return [
-                'success' => true,
+                'success' => false,
+                'error' => 'No videos found in this folder',
                 'folder_id' => $folderId,
                 'total_videos' => 0,
                 'videos' => [],
-                'message' => 'No videos found in this folder'
+                'debug_info' => [
+                    'folder_url' => $normalizedUrl,
+                    'content_length' => strlen($folderContent),
+                    'content_preview' => substr($folderContent, 0, 1000)
+                ]
             ];
         }
         
@@ -390,7 +465,8 @@ class Vid7Downloader {
         if (!$videoId) {
             return [
                 'success' => false,
-                'error' => 'Invalid URL format. Expected: https://DOMAIN/{e|d|v|watch}/VIDEO_ID or /f/FOLDER_ID'
+                'error' => 'Invalid URL format. Expected: https://DOMAIN/{e|d|v|watch}/VIDEO_ID or /f/FOLDER_ID',
+                'message' => 'Format URL tidak valid. Gunakan format: https://domain/{e|d|v}/VIDEO_ID'
             ];
         }
         
@@ -558,6 +634,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         echo json_encode([
             'success' => false,
             'error' => 'Missing parameters',
+            'message' => 'Parameter URL tidak ditemukan',
             'usage' => [
                 'get_info' => '?url=https://vid7.online/e/VIDEO_ID or /d/VIDEO_ID (single video)',
                 'get_folder' => '?url=https://vid7.online/f/FOLDER_ID (batch all videos)',
