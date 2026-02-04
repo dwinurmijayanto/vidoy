@@ -6,6 +6,14 @@
 
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
+header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type');
+
+// Handle preflight OPTIONS request
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(200);
+    exit();
+}
 
 class Vid7Downloader {
     private $userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
@@ -609,39 +617,66 @@ class Vid7Downloader {
 }
 
 // Main execution
-if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-    // Enable debug mode if requested
-    $debug = isset($_GET['debug']) && $_GET['debug'] == '1';
-    $downloader = new Vid7Downloader($debug);
-    
-    // Mode: get info
-    if (isset($_GET['url']) && !isset($_GET['download'])) {
-        $result = $downloader->getDownloadInfo($_GET['url']);
-        echo json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
-    }
-    // Mode: proxy download
-    else if (isset($_GET['video_url']) && isset($_GET['download'])) {
-        $videoUrl = $_GET['video_url'];
-        $filename = $_GET['filename'] ?? null;
-        $refererDomain = $_GET['referer'] ?? null;
-        $downloader->proxyDownload($videoUrl, $filename, $refererDomain);
-    }
-    else {
+try {
+    if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+        // Enable debug mode if requested
+        $debug = isset($_GET['debug']) && $_GET['debug'] == '1';
+        $downloader = new Vid7Downloader($debug);
+        
+        // Mode: test endpoint
+        if (isset($_GET['test'])) {
+            echo json_encode([
+                'success' => true,
+                'message' => 'API is working!',
+                'timestamp' => date('Y-m-d H:i:s'),
+                'php_version' => PHP_VERSION,
+                'curl_available' => function_exists('curl_init')
+            ], JSON_PRETTY_PRINT);
+            exit;
+        }
+        
+        // Mode: get info
+        if (isset($_GET['url']) && !isset($_GET['download'])) {
+            $result = $downloader->getDownloadInfo($_GET['url']);
+            echo json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        }
+        // Mode: proxy download
+        else if (isset($_GET['video_url']) && isset($_GET['download'])) {
+            $videoUrl = $_GET['video_url'];
+            $filename = $_GET['filename'] ?? null;
+            $refererDomain = $_GET['referer'] ?? null;
+            $downloader->proxyDownload($videoUrl, $filename, $refererDomain);
+        }
+        else {
+            echo json_encode([
+                'success' => false,
+                'error' => 'Missing parameters',
+                'message' => 'Parameter URL tidak ditemukan',
+                'usage' => [
+                    'get_info' => '?url=https://vid7.online/e/VIDEO_ID or /d/VIDEO_ID (single video)',
+                    'get_folder' => '?url=https://vid7.online/f/FOLDER_ID (batch all videos)',
+                    'get_info_debug' => '?url=https://vid7.online/e/VIDEO_ID&debug=1',
+                    'download' => '?video_url=VIDEO_URL&download=1&filename=video.mp4'
+                ],
+                'notes' => [
+                    '/d/ and /e/' => 'Single video URLs',
+                    '/f/' => 'Folder URL - automatically processes all videos in batch'
+                ]
+            ], JSON_PRETTY_PRINT);
+        }
+    } else {
         echo json_encode([
             'success' => false,
-            'error' => 'Missing parameters',
-            'message' => 'Parameter URL tidak ditemukan',
-            'usage' => [
-                'get_info' => '?url=https://vid7.online/e/VIDEO_ID or /d/VIDEO_ID (single video)',
-                'get_folder' => '?url=https://vid7.online/f/FOLDER_ID (batch all videos)',
-                'get_info_debug' => '?url=https://vid7.online/e/VIDEO_ID&debug=1',
-                'download' => '?video_url=VIDEO_URL&download=1&filename=video.mp4'
-            ],
-            'notes' => [
-                '/d/ and /e/' => 'Single video URLs',
-                '/f/' => 'Folder URL - automatically processes all videos in batch'
-            ]
+            'error' => 'Invalid request method',
+            'message' => 'Hanya menerima GET request'
         ], JSON_PRETTY_PRINT);
     }
+} catch (Exception $e) {
+    http_response_code(500);
+    echo json_encode([
+        'success' => false,
+        'error' => 'Internal server error',
+        'message' => 'Terjadi kesalahan pada server: ' . $e->getMessage()
+    ], JSON_PRETTY_PRINT);
 }
 ?>
