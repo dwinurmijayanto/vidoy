@@ -74,34 +74,44 @@ class Vid7Downloader {
             return null;
         }
         
-        // Extract all video links with pattern: href="/d/VIDEO_ID" or href="/e/VIDEO_ID"
-        preg_match_all('/href="\/([dev])\/([a-z0-9]+)"/i', $content, $matches, PREG_SET_ORDER);
-        
-        if (empty($matches)) {
-            return [];
-        }
-        
         $videos = [];
         $seenIds = [];
         
-        foreach ($matches as $match) {
-            $path = $match[1]; // d, e, or v
-            $videoId = $match[2];
+        // Multiple patterns untuk ekstraksi video links
+        $patterns = [
+            '/href=["\']\\/([dev])\\/([a-z0-9]+)["\']/i',
+            '/\\/([dev])\\/([a-z0-9]+)/i',
+            '/<a[^>]*href=["\']\\/([dev])\\/([a-z0-9]+)["\']/i'
+        ];
+        
+        foreach ($patterns as $pattern) {
+            preg_match_all($pattern, $content, $matches, PREG_SET_ORDER);
             
-            // Avoid duplicates
-            if (isset($seenIds[$videoId])) {
-                continue;
+            foreach ($matches as $match) {
+                $path = $match[1];
+                $videoId = $match[2];
+                
+                // Avoid duplicates
+                if (isset($seenIds[$videoId])) {
+                    continue;
+                }
+                $seenIds[$videoId] = true;
+                
+                $videos[] = [
+                    'video_id' => $videoId,
+                    'path' => $path,
+                    'url' => "/{$path}/{$videoId}"
+                ];
             }
-            $seenIds[$videoId] = true;
-            
-            $videos[] = [
-                'video_id' => $videoId,
-                'path' => $path,
-                'url' => "/{$path}/{$videoId}"
-            ];
         }
         
         $this->log("Found " . count($videos) . " videos in folder");
+        
+        // Jika tidak ada video ditemukan, log HTML untuk debugging
+        if (empty($videos) && $this->debug) {
+            $this->log("HTML Preview:", substr($content, 0, 1000));
+        }
+        
         return $videos;
     }
     
@@ -368,9 +378,12 @@ class Vid7Downloader {
     public function getDownloadInfo($url) {
         // Auto-detect folder and process all videos
         if ($this->isFolder($url)) {
-            $this->log("Detected folder URL, processing all videos...");
+            $this->log("Detected folder URL (/f/), processing all videos in batch...");
             return $this->processFolderBatch($url);
         }
+        
+        // /d/ dan /e/ adalah single video, langsung proses
+        $this->log("Detected single video URL (/d/ or /e/), processing single video...");
         
         // Step 1: Extract video ID
         $videoId = $this->extractVideoId($url);
