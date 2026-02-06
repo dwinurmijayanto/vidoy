@@ -60,7 +60,7 @@
                 <div class="relative">
                     <textarea
                         id="urlInput"
-                        placeholder="Paste teks atau daftar URL di sini... Auto detect akan menemukan semua URL!&#10;&#10;Contoh:&#10;📁 STw Binal montok Nikmat&#10;https://upl.ad/f/1orrot80hs0&#10;&#10;📁 Viral terbaru Nih&#10;https://upl.ad/f/lt62gxsxkin&#10;&#10;Atau langsung paste URL saja..."
+                        placeholder="Paste teks atau daftar URL di sini... Auto detect akan menemukan semua URL!&#10;&#10;Contoh:&#10;folder pertama &#10;https://upl.ad/f/xxxxxxxxxx&#10;&#10;folder kedua &#10;https://upl.ad/f/xxxxxxx&#10;&#10;Atau langsung paste URL saja..."
                         class="w-full px-6 py-5 pr-6 rounded-2xl bg-white/10 backdrop-blur-lg border-2 border-purple-500/30 text-white text-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all resize-none"
                         rows="8"
                         required
