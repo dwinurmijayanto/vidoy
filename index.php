@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vidoy Downloader</title>
+    <title>Vidoy Downloader - Bulk Edition</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         .card-hover {
@@ -25,6 +25,9 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+        .progress-bar {
+            transition: width 0.3s ease;
+        }
     </style>
 </head>
 <body>
@@ -41,33 +44,34 @@
                 <h1 class="text-5xl font-bold text-white">Vidoy Downloader</h1>
             </div>
             <p class="text-gray-300 text-lg">Download semua video dari Vidoy dengan mudah</p>
+            <p class="text-purple-400 text-sm font-semibold mt-2">✨ Bulk Edition - Support Multiple Folders</p>
         </div>
 
         <!-- Search Form -->
         <div class="mb-10 max-w-5xl mx-auto">
             <form id="searchForm" class="relative">
-                <input
-                    type="text"
+                <textarea
                     id="urlInput"
-                    placeholder="Masukkan URL Vidoy (contoh: https://vid7.online/f/xxxxxxxxx)"
-                    class="w-full px-6 py-5 pr-36 rounded-2xl bg-white/10 backdrop-blur-lg border-2 border-purple-500/30 text-white text-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+                    placeholder="Masukkan URL Vidoy (pisahkan dengan koma untuk multiple folders)&#10;&#10;Contoh:&#10;https://vid7.online/f/xxxxxxxxx, https://vid7.online/f/yyyyyyyyy, https://vid7.online/f/zzzzzzzzz"
+                    class="w-full px-6 py-5 pr-6 rounded-2xl bg-white/10 backdrop-blur-lg border-2 border-purple-500/30 text-white text-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all resize-none"
+                    rows="4"
                     required
-                />
+                ></textarea>
                 <button
                     type="submit"
                     id="searchBtn"
-                    class="absolute right-2 top-2 bottom-2 px-8 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white rounded-xl font-bold transition-all flex items-center gap-2 shadow-lg"
+                    class="mt-4 w-full px-8 py-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg"
                 >
                     <svg id="searchIcon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <circle cx="11" cy="11" r="8" stroke-width="2"/>
                         <path d="m21 21-4.35-4.35" stroke-width="2"/>
                     </svg>
                     <div id="loadingSpinner" class="spinner hidden"></div>
-                    <span id="searchText">Search</span>
+                    <span id="searchText">Process URLs</span>
                 </button>
             </form>
             <p class="text-gray-400 text-sm mt-3 text-center">
-                💡 API akan otomatis mengambil <strong class="text-purple-400">semua video</strong> dari folder (/f/)
+                💡 Pisahkan multiple URLs dengan <strong class="text-purple-400">koma (,)</strong> atau <strong class="text-purple-400">enter/baris baru</strong>
             </p>
             <div class="text-center mt-2">
                 <button id="testApiBtn" class="text-gray-500 hover:text-purple-400 text-xs underline">
@@ -76,21 +80,34 @@
             </div>
         </div>
 
-        <!-- Share Info -->
-        <div id="shareInfo" class="max-w-5xl mx-auto mb-8 hidden">
+        <!-- Progress Info -->
+        <div id="progressInfo" class="max-w-5xl mx-auto mb-8 hidden">
             <div class="bg-white/5 backdrop-blur-lg rounded-2xl border-2 border-purple-500/30 p-6">
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
+                <div class="mb-4">
+                    <div class="flex justify-between text-sm text-gray-300 mb-2">
+                        <span>Processing folders...</span>
+                        <span id="progressText">0 / 0</span>
+                    </div>
+                    <div class="w-full bg-gray-700 rounded-full h-3 overflow-hidden">
+                        <div id="progressBar" class="progress-bar bg-gradient-to-r from-purple-500 to-pink-500 h-3 rounded-full" style="width: 0%"></div>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
                     <div>
-                        <div class="text-gray-400 text-sm mb-1">Total Videos</div>
-                        <div class="text-purple-400 text-2xl font-bold" id="totalVideos">0</div>
+                        <div class="text-gray-400 text-sm mb-1">Total Folders</div>
+                        <div class="text-purple-400 text-2xl font-bold" id="totalFolders">0</div>
                     </div>
                     <div>
-                        <div class="text-gray-400 text-sm mb-1">Processed</div>
-                        <div class="text-blue-400 text-2xl font-bold" id="processedVideos">0</div>
+                        <div class="text-gray-400 text-sm mb-1">Total Videos</div>
+                        <div class="text-blue-400 text-2xl font-bold" id="totalVideos">0</div>
                     </div>
                     <div>
                         <div class="text-gray-400 text-sm mb-1">Success</div>
                         <div class="text-green-400 text-2xl font-bold" id="successCount">0</div>
+                    </div>
+                    <div>
+                        <div class="text-gray-400 text-sm mb-1">Failed</div>
+                        <div class="text-red-400 text-2xl font-bold" id="failedCount">0</div>
                     </div>
                 </div>
             </div>
@@ -110,15 +127,9 @@
             </div>
         </div>
 
-        <!-- Videos Grid -->
+        <!-- Videos Container -->
         <div id="videosContainer" class="hidden space-y-8">
-            <div class="flex flex-wrap items-center justify-between gap-4 px-2">
-                <h2 class="text-3xl font-bold text-white" id="videosTitle">📹 Found 0 videos</h2>
-            </div>
-
-            <div id="videosGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                <!-- Videos will be inserted here -->
-            </div>
+            <!-- Folders will be inserted here dynamically -->
         </div>
 
         <!-- Empty State -->
@@ -128,18 +139,18 @@
             </svg>
             <h3 class="text-gray-300 text-2xl font-bold mb-3">Siap untuk download?</h3>
             <p class="text-gray-400 text-lg mb-2">Masukkan URL Vidoy di atas untuk memulai</p>
-            <p class="text-gray-500 text-sm">Contoh: https://vid7.online/f/abc123 (folder) atau /d/abc123 (single video)</p>
+            <p class="text-gray-500 text-sm">Support single atau multiple folders (pisahkan dengan koma)</p>
             
             <div class="mt-12 max-w-3xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div class="bg-white/5 backdrop-blur rounded-xl p-6 border border-purple-500/20">
                     <div class="text-4xl mb-3">🚀</div>
-                    <h4 class="text-white font-bold mb-2">Auto Fetch</h4>
-                    <p class="text-gray-400 text-sm">Otomatis ambil semua video dari folder</p>
+                    <h4 class="text-white font-bold mb-2">Bulk Processing</h4>
+                    <p class="text-gray-400 text-sm">Process multiple folders sekaligus</p>
                 </div>
                 <div class="bg-white/5 backdrop-blur rounded-xl p-6 border border-purple-500/20">
                     <div class="text-4xl mb-3">📦</div>
-                    <h4 class="text-white font-bold mb-2">Batch Download</h4>
-                    <p class="text-gray-400 text-sm">Download semua video sekaligus</p>
+                    <h4 class="text-white font-bold mb-2">Auto Fetch</h4>
+                    <p class="text-gray-400 text-sm">Otomatis ambil semua video dari setiap folder</p>
                 </div>
                 <div class="bg-white/5 backdrop-blur rounded-xl p-6 border border-purple-500/20">
                     <div class="text-4xl mb-3">⚡</div>
@@ -179,120 +190,135 @@ document.getElementById('testApiBtn').addEventListener('click', async () => {
     }
 });
 
+// Parse URLs from input (support comma and newline separation)
+function parseUrls(input) {
+    // Split by comma or newline
+    const urls = input
+        .split(/[,\n]/)
+        .map(url => url.trim())
+        .filter(url => url.length > 0);
+    
+    return urls;
+}
+
+// Global stats tracking
+let globalStats = {
+    totalFolders: 0,
+    processedFolders: 0,
+    totalVideos: 0,
+    successVideos: 0,
+    failedVideos: 0
+};
+
 document.getElementById('searchForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     
     const urlInput = document.getElementById('urlInput');
-    const url = urlInput.value.trim();
+    const input = urlInput.value.trim();
     
-    if (!url) {
+    if (!input) {
         showError('Silakan masukkan URL Vidoy');
         return;
     }
     
+    // Parse URLs
+    const urls = parseUrls(input);
+    
+    if (urls.length === 0) {
+        showError('Tidak ada URL valid yang ditemukan');
+        return;
+    }
+    
+    // Reset global stats
+    globalStats = {
+        totalFolders: urls.length,
+        processedFolders: 0,
+        totalVideos: 0,
+        successVideos: 0,
+        failedVideos: 0
+    };
+    
     // Show loading
     setLoading(true);
     hideAll();
+    showProgress();
+    updateProgress();
     
+    // Clear previous results
+    document.getElementById('videosContainer').innerHTML = '';
+    
+    // Process each URL
+    for (let i = 0; i < urls.length; i++) {
+        const url = urls[i];
+        await processUrl(url, i + 1);
+        
+        // Update progress
+        globalStats.processedFolders++;
+        updateProgress();
+    }
+    
+    setLoading(false);
+    
+    // Show results
+    if (globalStats.totalVideos > 0) {
+        document.getElementById('videosContainer').classList.remove('hidden');
+    } else {
+        showError('Tidak ada video yang berhasil diambil dari semua folder');
+    }
+});
+
+async function processUrl(url, folderNumber) {
     try {
-        // Panggil API PHP
         const apiUrl = `/api/index.php?url=${encodeURIComponent(url)}`;
-        console.log('Calling API:', apiUrl);
+        console.log(`Processing folder ${folderNumber}:`, apiUrl);
         
         const response = await fetch(apiUrl);
         
-        console.log('Response status:', response.status);
-        console.log('Response headers:', [...response.headers.entries()]);
-        
-        // Cek apakah response OK
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
         
-        // Cek content type
         const contentType = response.headers.get('content-type');
         if (!contentType || !contentType.includes('application/json')) {
             const text = await response.text();
             console.error('Non-JSON response:', text);
-            throw new Error('Server tidak mengembalikan JSON. Mungkin terjadi error pada API.');
+            throw new Error('Server tidak mengembalikan JSON');
         }
         
         const data = await response.json();
-        console.log('API Response:', data);
+        console.log(`Folder ${folderNumber} response:`, data);
         
-        setLoading(false);
-        
-        // Cek apakah ada video yang berhasil
         if (data.success) {
-            // Untuk folder batch
+            // Handle folder batch
             if (data.type === 'folder' && data.videos && data.videos.length > 0) {
-                displayVideos(data);
+                displayFolderVideos(data, url, folderNumber);
+                globalStats.totalVideos += data.videos.length;
+                globalStats.successVideos += data.success_count || data.videos.filter(v => v.success).length;
+                globalStats.failedVideos += (data.videos.length - (data.success_count || data.videos.filter(v => v.success).length));
             }
-            // Untuk single video
+            // Handle single video
             else if (data.data && data.data.download_url) {
-                displaySingleVideo(data);
+                const videoData = convertSingleToFolder(data);
+                displayFolderVideos(videoData, url, folderNumber);
+                globalStats.totalVideos += 1;
+                globalStats.successVideos += 1;
             }
             else {
-                showError(data.message || 'Tidak ada video yang ditemukan');
+                displayFolderError(url, folderNumber, 'Tidak ada video ditemukan');
             }
         } else {
-            showError(data.message || data.error || 'Tidak ada video yang ditemukan');
+            displayFolderError(url, folderNumber, data.message || data.error || 'Gagal memproses folder');
         }
     } catch (error) {
-        setLoading(false);
-        console.error('Error details:', error);
-        
-        let errorMessage = 'Gagal mengambil data dari API';
-        
-        if (error.message.includes('HTTP error')) {
-            errorMessage = `Server error: ${error.message}. Periksa apakah api/index.php dapat diakses.`;
-        } else if (error.message.includes('JSON')) {
-            errorMessage = `API mengembalikan response bukan JSON. Periksa file api/index.php dan pastikan tidak ada error.`;
-        } else if (error.message.includes('Failed to fetch')) {
-            errorMessage = `Tidak dapat terhubung ke API. Pastikan file api/index.php ada di folder yang sama dengan index.html`;
-        } else {
-            errorMessage = `Error: ${error.message}`;
-        }
-        
-        showError(errorMessage);
+        console.error(`Error processing folder ${folderNumber}:`, error);
+        displayFolderError(url, folderNumber, error.message);
     }
-});
-
-function setLoading(loading) {
-    const searchBtn = document.getElementById('searchBtn');
-    const searchIcon = document.getElementById('searchIcon');
-    const loadingSpinner = document.getElementById('loadingSpinner');
-    const searchText = document.getElementById('searchText');
     
-    if (loading) {
-        searchBtn.disabled = true;
-        searchIcon.classList.add('hidden');
-        loadingSpinner.classList.remove('hidden');
-        searchText.textContent = 'Loading...';
-    } else {
-        searchBtn.disabled = false;
-        searchIcon.classList.remove('hidden');
-        loadingSpinner.classList.add('hidden');
-        searchText.textContent = 'Search';
-    }
+    updateProgress();
 }
 
-function hideAll() {
-    document.getElementById('shareInfo').classList.add('hidden');
-    document.getElementById('errorMessage').classList.add('hidden');
-    document.getElementById('videosContainer').classList.add('hidden');
-    document.getElementById('emptyState').classList.add('hidden');
-}
-
-function showError(message) {
-    hideAll();
-    document.getElementById('errorText').textContent = message;
-    document.getElementById('errorMessage').classList.remove('hidden');
-}
-
-function displaySingleVideo(data) {
-    // Convert single video to array format
-    const videoData = {
+function convertSingleToFolder(data) {
+    return {
         success: true,
         type: 'single',
         total_videos: 1,
@@ -307,33 +333,130 @@ function displaySingleVideo(data) {
             embed_url: data.data.embed_url
         }]
     };
-    
-    displayVideos(videoData);
 }
 
-function displayVideos(data) {
-    hideAll();
+function displayFolderVideos(data, sourceUrl, folderNumber) {
+    const container = document.getElementById('videosContainer');
     
-    // Show share info
-    document.getElementById('totalVideos').textContent = data.total_videos || 0;
-    document.getElementById('processedVideos').textContent = data.processed || 0;
-    document.getElementById('successCount').textContent = data.success_count || 0;
-    document.getElementById('shareInfo').classList.remove('hidden');
+    const folderSection = document.createElement('div');
+    folderSection.className = 'space-y-4';
     
-    // Show videos
     const videos = data.videos || [];
-    const videosTitle = document.getElementById('videosTitle');
-    videosTitle.textContent = `📹 Found ${videos.length} video${videos.length !== 1 ? 's' : ''}`;
+    const successCount = videos.filter(v => v.success).length;
     
-    const videosGrid = document.getElementById('videosGrid');
-    videosGrid.innerHTML = '';
+    folderSection.innerHTML = `
+        <div class="bg-white/5 backdrop-blur-lg rounded-2xl border-2 border-purple-500/30 p-6">
+            <div class="flex flex-wrap items-center justify-between gap-4 mb-4">
+                <div>
+                    <h2 class="text-2xl font-bold text-white mb-2">
+                        📁 Folder #${folderNumber}
+                    </h2>
+                    <p class="text-gray-400 text-sm break-all">${escapeHtml(sourceUrl)}</p>
+                </div>
+                <div class="flex gap-4 text-sm">
+                    <div class="text-center">
+                        <div class="text-gray-400 mb-1">Videos</div>
+                        <div class="text-purple-400 font-bold text-xl">${videos.length}</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-gray-400 mb-1">Success</div>
+                        <div class="text-green-400 font-bold text-xl">${successCount}</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6" id="folder-${folderNumber}-grid">
+                <!-- Videos will be inserted here -->
+            </div>
+        </div>
+    `;
     
+    container.appendChild(folderSection);
+    
+    const grid = folderSection.querySelector(`#folder-${folderNumber}-grid`);
     videos.forEach((video, index) => {
         const card = createVideoCard(video, index);
-        videosGrid.appendChild(card);
+        grid.appendChild(card);
     });
+}
+
+function displayFolderError(sourceUrl, folderNumber, errorMessage) {
+    const container = document.getElementById('videosContainer');
     
-    document.getElementById('videosContainer').classList.remove('hidden');
+    const folderSection = document.createElement('div');
+    folderSection.className = 'space-y-4';
+    
+    folderSection.innerHTML = `
+        <div class="bg-red-500/10 backdrop-blur-lg rounded-2xl border-2 border-red-500/30 p-6">
+            <div class="flex items-start gap-4">
+                <svg class="w-8 h-8 text-red-400 flex-shrink-0 mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="10" stroke-width="2"/>
+                    <line x1="12" y1="8" x2="12" y2="12" stroke-width="2"/>
+                    <line x1="12" y1="16" x2="12.01" y2="16" stroke-width="2"/>
+                </svg>
+                <div class="flex-1">
+                    <h2 class="text-xl font-bold text-red-300 mb-2">
+                        ❌ Folder #${folderNumber} - Error
+                    </h2>
+                    <p class="text-gray-400 text-sm break-all mb-2">${escapeHtml(sourceUrl)}</p>
+                    <p class="text-red-200">${escapeHtml(errorMessage)}</p>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    container.appendChild(folderSection);
+    globalStats.failedVideos++;
+}
+
+function updateProgress() {
+    document.getElementById('totalFolders').textContent = globalStats.totalFolders;
+    document.getElementById('totalVideos').textContent = globalStats.totalVideos;
+    document.getElementById('successCount').textContent = globalStats.successVideos;
+    document.getElementById('failedCount').textContent = globalStats.failedVideos;
+    
+    const progressPercent = globalStats.totalFolders > 0 
+        ? (globalStats.processedFolders / globalStats.totalFolders) * 100 
+        : 0;
+    
+    document.getElementById('progressBar').style.width = progressPercent + '%';
+    document.getElementById('progressText').textContent = 
+        `${globalStats.processedFolders} / ${globalStats.totalFolders}`;
+}
+
+function showProgress() {
+    document.getElementById('progressInfo').classList.remove('hidden');
+}
+
+function setLoading(loading) {
+    const searchBtn = document.getElementById('searchBtn');
+    const searchIcon = document.getElementById('searchIcon');
+    const loadingSpinner = document.getElementById('loadingSpinner');
+    const searchText = document.getElementById('searchText');
+    
+    if (loading) {
+        searchBtn.disabled = true;
+        searchIcon.classList.add('hidden');
+        loadingSpinner.classList.remove('hidden');
+        searchText.textContent = 'Processing...';
+    } else {
+        searchBtn.disabled = false;
+        searchIcon.classList.remove('hidden');
+        loadingSpinner.classList.add('hidden');
+        searchText.textContent = 'Process URLs';
+    }
+}
+
+function hideAll() {
+    document.getElementById('errorMessage').classList.add('hidden');
+    document.getElementById('videosContainer').classList.add('hidden');
+    document.getElementById('emptyState').classList.add('hidden');
+}
+
+function showError(message) {
+    hideAll();
+    document.getElementById('errorText').textContent = message;
+    document.getElementById('errorMessage').classList.remove('hidden');
 }
 
 function createVideoCard(video, index) {
