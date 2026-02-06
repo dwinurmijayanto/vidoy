@@ -60,7 +60,7 @@
                 <div class="relative">
                     <textarea
                         id="urlInput"
-                        placeholder="Paste teks atau daftar URL di sini... Auto detect akan menemukan semua URL!&#10;&#10;Contoh:&#10;folder pertama &#10;https://upl.ad/f/xxxxxxxxxx&#10;&#10;folder kedua &#10;https://upl.ad/f/xxxxxxx&#10;&#10;Atau langsung paste URL saja..."
+                        placeholder="Paste teks atau daftar URL di sini... Auto detect akan menemukan semua URL!&#10;&#10;Support SEMUA domain dengan pattern /f/ atau /d/&#10;&#10;Contoh:&#10;📁 STw Binal montok Nikmat&#10;https://upl.ad/f/1orrot80hs0&#10;&#10;📁 Viral terbaru Nih&#10;https://vid7.online/f/lt62gxsxkin&#10;&#10;📁 Koleksi lainnya&#10;https://domain-apapun.com/f/abc123&#10;&#10;Atau langsung paste URL saja..."
                         class="w-full px-6 py-5 pr-6 rounded-2xl bg-white/10 backdrop-blur-lg border-2 border-purple-500/30 text-white text-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all resize-none"
                         rows="8"
                         required
@@ -195,9 +195,10 @@
 <script>
 // Auto detect URLs from input text
 function detectUrls(text) {
-    // Regex pattern untuk mendeteksi URL Vidoy (support berbagai domain)
-    // Matches: https://upl.ad/f/xxx, https://vid7.online/f/xxx, https://vid7.online/d/xxx, dll
-    const urlPattern = /https?:\/\/(?:upl\.ad|vid\d*\.online|vidoy\.[a-z]+)\/[fd]\/[a-zA-Z0-9]+/gi;
+    // Regex pattern universal - deteksi SEMUA domain dengan pattern /f/ atau /d/
+    // Matches: https://apapun.domain/f/xxx atau https://apapun.domain/d/xxx
+    // Pattern: http(s)://[domain apapun]/[f atau d]/[alphanumeric]
+    const urlPattern = /https?:\/\/[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\/[fd]\/[a-zA-Z0-9]+/gi;
     
     const matches = text.match(urlPattern);
     
@@ -277,7 +278,7 @@ document.getElementById('searchForm').addEventListener('submit', async (e) => {
     const urls = detectUrls(input);
     
     if (urls.length === 0) {
-        showError('❌ Tidak ada URL Vidoy yang terdeteksi!\n\nPastikan URL memiliki format:\n- https://upl.ad/f/xxx atau /d/xxx\n- https://vid7.online/f/xxx atau /d/xxx');
+        showError('❌ Tidak ada URL yang terdeteksi!\n\nPastikan URL memiliki format:\n- https://domain.com/f/xxxxx (folder)\n- https://domain.com/d/xxxxx (single video)\n\nContoh: https://upl.ad/f/abc123 atau https://vid7.online/f/xyz789');
         return;
     }
     
