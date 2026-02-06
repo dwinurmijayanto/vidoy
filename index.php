@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vidoy Downloader - Bulk Edition</title>
+    <title>Vidoy Downloader - Auto Detect Edition</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         .card-hover {
@@ -28,6 +28,13 @@
         .progress-bar {
             transition: width 0.3s ease;
         }
+        .detected-url {
+            background: rgba(168, 85, 247, 0.1);
+            border-left: 3px solid #a855f7;
+            padding: 0.5rem;
+            margin: 0.25rem 0;
+            border-radius: 0.5rem;
+        }
     </style>
 </head>
 <body>
@@ -44,34 +51,51 @@
                 <h1 class="text-5xl font-bold text-white">Vidoy Downloader</h1>
             </div>
             <p class="text-gray-300 text-lg">Download semua video dari Vidoy dengan mudah</p>
-            <p class="text-purple-400 text-sm font-semibold mt-2">✨ Bulk Edition - Support Multiple Folders</p>
+            <p class="text-purple-400 text-sm font-semibold mt-2">🤖 Auto Detect Edition - Smart URL Extraction</p>
         </div>
 
         <!-- Search Form -->
         <div class="mb-10 max-w-5xl mx-auto">
-            <form id="searchForm" class="relative">
-                <textarea
-                    id="urlInput"
-                    placeholder="Masukkan URL Vidoy (pisahkan dengan koma untuk multiple folders)&#10;&#10;Contoh:&#10;https://vid7.online/f/xxxxxxxxx, https://vid7.online/f/yyyyyyyyy, https://vid7.online/f/zzzzzzzzz"
-                    class="w-full px-6 py-5 pr-6 rounded-2xl bg-white/10 backdrop-blur-lg border-2 border-purple-500/30 text-white text-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all resize-none"
-                    rows="4"
-                    required
-                ></textarea>
+            <form id="searchForm" class="space-y-4">
+                <div class="relative">
+                    <textarea
+                        id="urlInput"
+                        placeholder="Paste teks atau daftar URL di sini... Auto detect akan menemukan semua URL!&#10;&#10;Contoh:&#10;📁 STw Binal montok Nikmat&#10;https://upl.ad/f/1orrot80hs0&#10;&#10;📁 Viral terbaru Nih&#10;https://upl.ad/f/lt62gxsxkin&#10;&#10;Atau langsung paste URL saja..."
+                        class="w-full px-6 py-5 pr-6 rounded-2xl bg-white/10 backdrop-blur-lg border-2 border-purple-500/30 text-white text-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all resize-none"
+                        rows="8"
+                        required
+                    ></textarea>
+                </div>
+                
+                <!-- Detected URLs Preview -->
+                <div id="detectedUrlsBox" class="hidden bg-white/5 backdrop-blur-lg rounded-2xl border-2 border-green-500/30 p-6">
+                    <div class="flex items-center gap-2 mb-3">
+                        <svg class="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" stroke-width="2"/>
+                        </svg>
+                        <h3 class="text-green-400 font-bold">
+                            <span id="detectedCount">0</span> URL Terdeteksi
+                        </h3>
+                    </div>
+                    <div id="detectedUrlsList" class="space-y-1 max-h-48 overflow-y-auto text-sm">
+                        <!-- Detected URLs will be listed here -->
+                    </div>
+                </div>
+                
                 <button
                     type="submit"
                     id="searchBtn"
-                    class="mt-4 w-full px-8 py-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg"
+                    class="w-full px-8 py-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     <svg id="searchIcon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <circle cx="11" cy="11" r="8" stroke-width="2"/>
-                        <path d="m21 21-4.35-4.35" stroke-width="2"/>
+                        <path d="M13 10V3L4 14h7v7l9-11h-7z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                     </svg>
                     <div id="loadingSpinner" class="spinner hidden"></div>
-                    <span id="searchText">Process URLs</span>
+                    <span id="searchText">Auto Detect & Process</span>
                 </button>
             </form>
             <p class="text-gray-400 text-sm mt-3 text-center">
-                💡 Pisahkan multiple URLs dengan <strong class="text-purple-400">koma (,)</strong> atau <strong class="text-purple-400">enter/baris baru</strong>
+                🤖 <strong class="text-purple-400">Smart Auto Detect</strong> - Paste teks apapun, sistem akan otomatis menemukan & memproses semua URL!
             </p>
             <div class="text-center mt-2">
                 <button id="testApiBtn" class="text-gray-500 hover:text-purple-400 text-xs underline">
@@ -138,24 +162,24 @@
                 <path d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
             <h3 class="text-gray-300 text-2xl font-bold mb-3">Siap untuk download?</h3>
-            <p class="text-gray-400 text-lg mb-2">Masukkan URL Vidoy di atas untuk memulai</p>
-            <p class="text-gray-500 text-sm">Support single atau multiple folders (pisahkan dengan koma)</p>
+            <p class="text-gray-400 text-lg mb-2">Paste teks atau URL Vidoy di atas untuk memulai</p>
+            <p class="text-gray-500 text-sm">Auto detect akan menemukan semua URL secara otomatis!</p>
             
             <div class="mt-12 max-w-3xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div class="bg-white/5 backdrop-blur rounded-xl p-6 border border-purple-500/20">
-                    <div class="text-4xl mb-3">🚀</div>
-                    <h4 class="text-white font-bold mb-2">Bulk Processing</h4>
-                    <p class="text-gray-400 text-sm">Process multiple folders sekaligus</p>
+                    <div class="text-4xl mb-3">🤖</div>
+                    <h4 class="text-white font-bold mb-2">Auto Detect</h4>
+                    <p class="text-gray-400 text-sm">Otomatis ekstrak semua URL dari teks</p>
                 </div>
                 <div class="bg-white/5 backdrop-blur rounded-xl p-6 border border-purple-500/20">
                     <div class="text-4xl mb-3">📦</div>
-                    <h4 class="text-white font-bold mb-2">Auto Fetch</h4>
-                    <p class="text-gray-400 text-sm">Otomatis ambil semua video dari setiap folder</p>
+                    <h4 class="text-white font-bold mb-2">Bulk Process</h4>
+                    <p class="text-gray-400 text-sm">Process semua URL sekaligus</p>
                 </div>
                 <div class="bg-white/5 backdrop-blur rounded-xl p-6 border border-purple-500/20">
                     <div class="text-4xl mb-3">⚡</div>
-                    <h4 class="text-white font-bold mb-2">Super Fast</h4>
-                    <p class="text-gray-400 text-sm">Proses download cepat & mudah</p>
+                    <h4 class="text-white font-bold mb-2">Super Smart</h4>
+                    <p class="text-gray-400 text-sm">Paste teks apapun, biarkan sistem bekerja</p>
                 </div>
             </div>
         </div>
@@ -169,6 +193,45 @@
 </div>
 
 <script>
+// Auto detect URLs from input text
+function detectUrls(text) {
+    // Regex pattern untuk mendeteksi URL Vidoy (support berbagai domain)
+    // Matches: https://upl.ad/f/xxx, https://vid7.online/f/xxx, https://vid7.online/d/xxx, dll
+    const urlPattern = /https?:\/\/(?:upl\.ad|vid\d*\.online|vidoy\.[a-z]+)\/[fd]\/[a-zA-Z0-9]+/gi;
+    
+    const matches = text.match(urlPattern);
+    
+    if (!matches) {
+        return [];
+    }
+    
+    // Remove duplicates
+    return [...new Set(matches)];
+}
+
+// Real-time URL detection while typing
+document.getElementById('urlInput').addEventListener('input', function() {
+    const text = this.value;
+    const urls = detectUrls(text);
+    
+    const detectedBox = document.getElementById('detectedUrlsBox');
+    const detectedCount = document.getElementById('detectedCount');
+    const detectedList = document.getElementById('detectedUrlsList');
+    
+    if (urls.length > 0) {
+        detectedBox.classList.remove('hidden');
+        detectedCount.textContent = urls.length;
+        
+        detectedList.innerHTML = urls.map((url, index) => `
+            <div class="detected-url text-gray-300 font-mono text-xs">
+                <span class="text-purple-400 font-bold">#${index + 1}</span> ${escapeHtml(url)}
+            </div>
+        `).join('');
+    } else {
+        detectedBox.classList.add('hidden');
+    }
+});
+
 // Test API Connection
 document.getElementById('testApiBtn').addEventListener('click', async () => {
     try {
@@ -190,17 +253,6 @@ document.getElementById('testApiBtn').addEventListener('click', async () => {
     }
 });
 
-// Parse URLs from input (support comma and newline separation)
-function parseUrls(input) {
-    // Split by comma or newline
-    const urls = input
-        .split(/[,\n]/)
-        .map(url => url.trim())
-        .filter(url => url.length > 0);
-    
-    return urls;
-}
-
 // Global stats tracking
 let globalStats = {
     totalFolders: 0,
@@ -217,17 +269,19 @@ document.getElementById('searchForm').addEventListener('submit', async (e) => {
     const input = urlInput.value.trim();
     
     if (!input) {
-        showError('Silakan masukkan URL Vidoy');
+        showError('Silakan masukkan teks atau URL Vidoy');
         return;
     }
     
-    // Parse URLs
-    const urls = parseUrls(input);
+    // Auto detect URLs from input text
+    const urls = detectUrls(input);
     
     if (urls.length === 0) {
-        showError('Tidak ada URL valid yang ditemukan');
+        showError('❌ Tidak ada URL Vidoy yang terdeteksi!\n\nPastikan URL memiliki format:\n- https://upl.ad/f/xxx atau /d/xxx\n- https://vid7.online/f/xxx atau /d/xxx');
         return;
     }
+    
+    console.log('🤖 Auto Detected URLs:', urls);
     
     // Reset global stats
     globalStats = {
@@ -443,7 +497,7 @@ function setLoading(loading) {
         searchBtn.disabled = false;
         searchIcon.classList.remove('hidden');
         loadingSpinner.classList.add('hidden');
-        searchText.textContent = 'Process URLs';
+        searchText.textContent = 'Auto Detect & Process';
     }
 }
 
