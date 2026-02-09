@@ -476,7 +476,7 @@ class Vid7Downloader {
         
         // Step 3: Normalize URL to vid7.online for processing
         $normalizedUrl = $this->normalizeToMainDomain($url);
-        $processDomain = 'vid7.online';
+        $processDomain = 'vide62.com';
         
         $this->log("Video ID: $videoId");
         $this->log("Original Domain: $originalDomain");
