@@ -1,6 +1,6 @@
 <?php
 /**
- * API Endpoint untuk Download Video dari vide623com
+ * API Endpoint untuk Download Video dari vide63.com
  * Fixed Version - Updated extraction patterns
  */
 
@@ -36,8 +36,8 @@ class Vid7Downloader {
      * Normalize domain to main working domain
      */
     private function normalizeToMainDomain($url) {
-        // Replace any domain with vide623com (main working domain)
-        $normalized = preg_replace('/https?:\/\/[^\/]+/', 'https://vide623com', $url);
+        // Replace any domain with vide63.com (main working domain)
+        $normalized = preg_replace('/https?:\/\/[^\/]+/', 'https://vide63.com', $url);
         $this->log("Normalized URL: $normalized");
         return $normalized;
     }
@@ -197,7 +197,7 @@ class Vid7Downloader {
             ];
         }
         
-        // Normalize to vide623com
+        // Normalize to vide63.com
         $normalizedUrl = $this->normalizeToMainDomain($folderUrl);
         $originalDomain = $this->extractBaseDomain($folderUrl);
         
@@ -254,7 +254,7 @@ class Vid7Downloader {
         $failCount = 0;
         
         foreach ($videoList as $video) {
-            $videoUrl = "https://vide623com" . $video['url'];
+            $videoUrl = "https://vide63.com" . $video['url'];
             $title = $this->extractVideoTitle($folderContent, $video['video_id']);
             
             $this->log("Processing: " . $video['video_id']);
@@ -302,7 +302,7 @@ class Vid7Downloader {
         if (preg_match('/https?:\/\/([^\/]+)/', $url, $matches)) {
             return $matches[1];
         }
-        return 'vide623com';
+        return 'vide63.com';
     }
     
     /**
@@ -418,7 +418,7 @@ class Vid7Downloader {
      * List of known working domains (fallback domains)
      */
     private $fallbackDomains = [
-        'vide623com',
+        'vide63.com',
         'vid8.online',
         'vid9.online',
         'vidstream.online'
@@ -474,9 +474,9 @@ class Vid7Downloader {
         // Step 2: Extract original domain (for display only)
         $originalDomain = $this->extractBaseDomain($url);
         
-        // Step 3: Normalize URL to vide623com for processing
+        // Step 3: Normalize URL to vide63.com for processing
         $normalizedUrl = $this->normalizeToMainDomain($url);
-        $processDomain = 'vide623com';
+        $processDomain = 'vide63.com';
         
         $this->log("Video ID: $videoId");
         $this->log("Original Domain: $originalDomain");
@@ -587,7 +587,7 @@ class Vid7Downloader {
             if (preg_match('/https?:\/\/([^\/]+)/', $videoUrl, $matches)) {
                 $refererDomain = $matches[1];
             } else {
-                $refererDomain = 'vide623com';
+                $refererDomain = 'vide63.com';
             }
         }
         
@@ -653,9 +653,9 @@ try {
                 'error' => 'Missing parameters',
                 'message' => 'Parameter URL tidak ditemukan',
                 'usage' => [
-                    'get_info' => '?url=https://vide623com/e/VIDEO_ID or /d/VIDEO_ID (single video)',
-                    'get_folder' => '?url=https://vide623com/f/FOLDER_ID (batch all videos)',
-                    'get_info_debug' => '?url=https://vide623com/e/VIDEO_ID&debug=1',
+                    'get_info' => '?url=https://vide63.com/e/VIDEO_ID or /d/VIDEO_ID (single video)',
+                    'get_folder' => '?url=https://vide63.com/f/FOLDER_ID (batch all videos)',
+                    'get_info_debug' => '?url=https://vide63.com/e/VIDEO_ID&debug=1',
                     'download' => '?video_url=VIDEO_URL&download=1&filename=video.mp4'
                 ],
                 'notes' => [
