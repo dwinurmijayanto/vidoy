@@ -1,6 +1,6 @@
 <?php
 /**
- * API Endpoint untuk Download Video dari veidtr.com.com
+ * API Endpoint untuk Download Video dari veidtr.com
  * Fixed Version - Updated extraction patterns
  */
 
@@ -36,7 +36,7 @@ class Vid7Downloader {
      * Normalize domain to main working domain
      */
     private function normalizeToMainDomain($url) {
-        // Replace any domain with veidtr.com.com (main working domain)
+        // Replace any domain with veidtr.com (main working domain)
         $normalized = preg_replace('/https?:\/\/[^\/]+/', 'https://veidtr.com', $url);
         $this->log("Normalized URL: $normalized");
         return $normalized;
@@ -197,7 +197,7 @@ class Vid7Downloader {
             ];
         }
         
-        // Normalize to veidtr.com.com
+        // Normalize to veidtr.com
         $normalizedUrl = $this->normalizeToMainDomain($folderUrl);
         $originalDomain = $this->extractBaseDomain($folderUrl);
         
@@ -302,7 +302,7 @@ class Vid7Downloader {
         if (preg_match('/https?:\/\/([^\/]+)/', $url, $matches)) {
             return $matches[1];
         }
-        return 'veidtr.com.com';
+        return 'veidtr.com';
     }
     
     /**
@@ -418,7 +418,7 @@ class Vid7Downloader {
      * List of known working domains (fallback domains)
      */
     private $fallbackDomains = [
-        'veidtr.com.com',
+        'veidtr.com',
         'vid8.online',
         'vid9.online',
         'vidstream.online'
@@ -474,9 +474,9 @@ class Vid7Downloader {
         // Step 2: Extract original domain (for display only)
         $originalDomain = $this->extractBaseDomain($url);
         
-        // Step 3: Normalize URL to veidtr.com.com for processing
+        // Step 3: Normalize URL to veidtr.com for processing
         $normalizedUrl = $this->normalizeToMainDomain($url);
-        $processDomain = 'veidtr.com.com';
+        $processDomain = 'veidtr.com';
         
         $this->log("Video ID: $videoId");
         $this->log("Original Domain: $originalDomain");
@@ -587,7 +587,7 @@ class Vid7Downloader {
             if (preg_match('/https?:\/\/([^\/]+)/', $videoUrl, $matches)) {
                 $refererDomain = $matches[1];
             } else {
-                $refererDomain = 'veidtr.com.com';
+                $refererDomain = 'veidtr.com';
             }
         }
         
