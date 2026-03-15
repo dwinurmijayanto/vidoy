@@ -37,7 +37,7 @@ class Vid7Downloader {
      */
     private function normalizeToMainDomain($url) {
         // Replace any domain with veidtr.com.com (main working domain)
-        $normalized = preg_replace('/https?:\/\/[^\/]+/', 'https://veidtr.com.com', $url);
+        $normalized = preg_replace('/https?:\/\/[^\/]+/', 'https://veidtr.com', $url);
         $this->log("Normalized URL: $normalized");
         return $normalized;
     }
@@ -254,7 +254,7 @@ class Vid7Downloader {
         $failCount = 0;
         
         foreach ($videoList as $video) {
-            $videoUrl = "https://veidtr.com.com" . $video['url'];
+            $videoUrl = "https://veidtr.com" . $video['url'];
             $title = $this->extractVideoTitle($folderContent, $video['video_id']);
             
             $this->log("Processing: " . $video['video_id']);
@@ -653,9 +653,9 @@ try {
                 'error' => 'Missing parameters',
                 'message' => 'Parameter URL tidak ditemukan',
                 'usage' => [
-                    'get_info' => '?url=https://veidtr.com.com/e/VIDEO_ID or /d/VIDEO_ID (single video)',
-                    'get_folder' => '?url=https://veidtr.com.com/f/FOLDER_ID (batch all videos)',
-                    'get_info_debug' => '?url=https://veidtr.com.com/e/VIDEO_ID&debug=1',
+                    'get_info' => '?url=https://veidtr.com/e/VIDEO_ID or /d/VIDEO_ID (single video)',
+                    'get_folder' => '?url=https://veidtr.com/f/FOLDER_ID (batch all videos)',
+                    'get_info_debug' => '?url=https://veidtr.com/e/VIDEO_ID&debug=1',
                     'download' => '?video_url=VIDEO_URL&download=1&filename=video.mp4'
                 ],
                 'notes' => [
