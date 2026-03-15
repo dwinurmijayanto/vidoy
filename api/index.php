@@ -1,6 +1,6 @@
 <?php
 /**
- * API Endpoint untuk Download Video dari winvidplay.com
+ * API Endpoint untuk Download Video dari veidtr.com.com
  * Fixed Version - Updated extraction patterns
  */
 
@@ -36,8 +36,8 @@ class Vid7Downloader {
      * Normalize domain to main working domain
      */
     private function normalizeToMainDomain($url) {
-        // Replace any domain with winvidplay.com (main working domain)
-        $normalized = preg_replace('/https?:\/\/[^\/]+/', 'https://winvidplay.com', $url);
+        // Replace any domain with veidtr.com.com (main working domain)
+        $normalized = preg_replace('/https?:\/\/[^\/]+/', 'https://veidtr.com.com', $url);
         $this->log("Normalized URL: $normalized");
         return $normalized;
     }
@@ -197,7 +197,7 @@ class Vid7Downloader {
             ];
         }
         
-        // Normalize to winvidplay.com
+        // Normalize to veidtr.com.com
         $normalizedUrl = $this->normalizeToMainDomain($folderUrl);
         $originalDomain = $this->extractBaseDomain($folderUrl);
         
@@ -254,7 +254,7 @@ class Vid7Downloader {
         $failCount = 0;
         
         foreach ($videoList as $video) {
-            $videoUrl = "https://winvidplay.com" . $video['url'];
+            $videoUrl = "https://veidtr.com.com" . $video['url'];
             $title = $this->extractVideoTitle($folderContent, $video['video_id']);
             
             $this->log("Processing: " . $video['video_id']);
@@ -302,7 +302,7 @@ class Vid7Downloader {
         if (preg_match('/https?:\/\/([^\/]+)/', $url, $matches)) {
             return $matches[1];
         }
-        return 'winvidplay.com';
+        return 'veidtr.com.com';
     }
     
     /**
@@ -418,7 +418,7 @@ class Vid7Downloader {
      * List of known working domains (fallback domains)
      */
     private $fallbackDomains = [
-        'winvidplay.com',
+        'veidtr.com.com',
         'vid8.online',
         'vid9.online',
         'vidstream.online'
@@ -474,9 +474,9 @@ class Vid7Downloader {
         // Step 2: Extract original domain (for display only)
         $originalDomain = $this->extractBaseDomain($url);
         
-        // Step 3: Normalize URL to winvidplay.com for processing
+        // Step 3: Normalize URL to veidtr.com.com for processing
         $normalizedUrl = $this->normalizeToMainDomain($url);
-        $processDomain = 'winvidplay.com';
+        $processDomain = 'veidtr.com.com';
         
         $this->log("Video ID: $videoId");
         $this->log("Original Domain: $originalDomain");
@@ -587,7 +587,7 @@ class Vid7Downloader {
             if (preg_match('/https?:\/\/([^\/]+)/', $videoUrl, $matches)) {
                 $refererDomain = $matches[1];
             } else {
-                $refererDomain = 'winvidplay.com';
+                $refererDomain = 'veidtr.com.com';
             }
         }
         
@@ -653,9 +653,9 @@ try {
                 'error' => 'Missing parameters',
                 'message' => 'Parameter URL tidak ditemukan',
                 'usage' => [
-                    'get_info' => '?url=https://winvidplay.com/e/VIDEO_ID or /d/VIDEO_ID (single video)',
-                    'get_folder' => '?url=https://winvidplay.com/f/FOLDER_ID (batch all videos)',
-                    'get_info_debug' => '?url=https://winvidplay.com/e/VIDEO_ID&debug=1',
+                    'get_info' => '?url=https://veidtr.com.com/e/VIDEO_ID or /d/VIDEO_ID (single video)',
+                    'get_folder' => '?url=https://veidtr.com.com/f/FOLDER_ID (batch all videos)',
+                    'get_info_debug' => '?url=https://veidtr.com.com/e/VIDEO_ID&debug=1',
                     'download' => '?video_url=VIDEO_URL&download=1&filename=video.mp4'
                 ],
                 'notes' => [
