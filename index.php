@@ -35,6 +35,10 @@
             margin: 0.25rem 0;
             border-radius: 0.5rem;
         }
+        .detected-url.type-video {
+            border-left-color: #3b82f6;
+            background: rgba(59, 130, 246, 0.1);
+        }
     </style>
 </head>
 <body>
@@ -60,7 +64,7 @@
                 <div class="relative">
                     <textarea
                         id="urlInput"
-                        placeholder="Paste teks atau daftar URL di sini... Auto detect akan menemukan semua URL!&#10;&#10;Support SEMUA domain dengan pattern /f/ atau /d/&#10;&#10;Contoh:&#10;📁 STw Binal montok Nikmat&#10;https://upl.ad/f/1orrot80hs0&#10;&#10;📁 Viral terbaru Nih&#10;https://vid7.online/f/lt62gxsxkin&#10;&#10;📁 Koleksi lainnya&#10;https://domain-apapun.com/f/abc123&#10;&#10;Atau langsung paste URL saja..."
+                        placeholder="Paste teks atau daftar URL di sini... Auto detect akan menemukan semua URL!&#10;&#10;Support SEMUA domain & subdomain dengan pattern /f/ atau /d/&#10;&#10;Contoh:&#10;📁 Folder biasa&#10;https://upl.ad/f/1orrot80hs0&#10;&#10;🎬 Video langsung (subdomain)&#10;https://cdn2.videy.coach/d/9pgjmw4ivhhj&#10;&#10;📁 Folder subdomain&#10;https://cdn2.videy.coach/f/abc123&#10;&#10;Paste teks apapun, sistem akan otomatis menemukan semua URL!"
                         class="w-full px-6 py-5 pr-6 rounded-2xl bg-white/10 backdrop-blur-lg border-2 border-purple-500/30 text-white text-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all resize-none"
                         rows="8"
                         required
@@ -69,13 +73,23 @@
                 
                 <!-- Detected URLs Preview -->
                 <div id="detectedUrlsBox" class="hidden bg-white/5 backdrop-blur-lg rounded-2xl border-2 border-green-500/30 p-6">
-                    <div class="flex items-center gap-2 mb-3">
-                        <svg class="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" stroke-width="2"/>
-                        </svg>
-                        <h3 class="text-green-400 font-bold">
-                            <span id="detectedCount">0</span> URL Terdeteksi
-                        </h3>
+                    <div class="flex items-center gap-4 mb-3 flex-wrap">
+                        <div class="flex items-center gap-2">
+                            <svg class="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" stroke-width="2"/>
+                            </svg>
+                            <h3 class="text-green-400 font-bold">
+                                <span id="detectedCount">0</span> URL Terdeteksi
+                            </h3>
+                        </div>
+                        <div class="flex gap-3 text-xs">
+                            <span class="bg-purple-500/30 text-purple-300 px-2 py-1 rounded-full">
+                                📁 Folder: <span id="detectedFolderCount">0</span>
+                            </span>
+                            <span class="bg-blue-500/30 text-blue-300 px-2 py-1 rounded-full">
+                                🎬 Video: <span id="detectedVideoCount">0</span>
+                            </span>
+                        </div>
                     </div>
                     <div id="detectedUrlsList" class="space-y-1 max-h-48 overflow-y-auto text-sm">
                         <!-- Detected URLs will be listed here -->
@@ -95,7 +109,7 @@
                 </button>
             </form>
             <p class="text-gray-400 text-sm mt-3 text-center">
-                🤖 <strong class="text-purple-400">Smart Auto Detect</strong> - Paste teks apapun, sistem akan otomatis menemukan & memproses semua URL!
+                🤖 <strong class="text-purple-400">Smart Auto Detect</strong> - Support semua domain, subdomain, /f/ (folder) & /d/ (video)
             </p>
             <div class="text-center mt-2">
                 <button id="testApiBtn" class="text-gray-500 hover:text-purple-400 text-xs underline">
@@ -109,7 +123,7 @@
             <div class="bg-white/5 backdrop-blur-lg rounded-2xl border-2 border-purple-500/30 p-6">
                 <div class="mb-4">
                     <div class="flex justify-between text-sm text-gray-300 mb-2">
-                        <span>Processing folders...</span>
+                        <span>Processing URLs...</span>
                         <span id="progressText">0 / 0</span>
                     </div>
                     <div class="w-full bg-gray-700 rounded-full h-3 overflow-hidden">
@@ -118,7 +132,7 @@
                 </div>
                 <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
                     <div>
-                        <div class="text-gray-400 text-sm mb-1">Total Folders</div>
+                        <div class="text-gray-400 text-sm mb-1">Total URLs</div>
                         <div class="text-purple-400 text-2xl font-bold" id="totalFolders">0</div>
                     </div>
                     <div>
@@ -162,24 +176,51 @@
                 <path d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
             <h3 class="text-gray-300 text-2xl font-bold mb-3">Siap untuk download?</h3>
-            <p class="text-gray-400 text-lg mb-2">Paste teks atau URL Vidoy di atas untuk memulai</p>
-            <p class="text-gray-500 text-sm">Auto detect akan menemukan semua URL secara otomatis!</p>
+            <p class="text-gray-400 text-lg mb-2">Paste teks atau URL di atas untuk memulai</p>
+            <p class="text-gray-500 text-sm">Support semua domain, subdomain, /f/ (folder) & /d/ (video langsung)</p>
             
             <div class="mt-12 max-w-3xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div class="bg-white/5 backdrop-blur rounded-xl p-6 border border-purple-500/20">
                     <div class="text-4xl mb-3">🤖</div>
                     <h4 class="text-white font-bold mb-2">Auto Detect</h4>
-                    <p class="text-gray-400 text-sm">Otomatis ekstrak semua URL dari teks</p>
+                    <p class="text-gray-400 text-sm">Otomatis ekstrak semua URL dari teks apapun</p>
                 </div>
                 <div class="bg-white/5 backdrop-blur rounded-xl p-6 border border-purple-500/20">
                     <div class="text-4xl mb-3">📦</div>
-                    <h4 class="text-white font-bold mb-2">Bulk Process</h4>
-                    <p class="text-gray-400 text-sm">Process semua URL sekaligus</p>
+                    <h4 class="text-white font-bold mb-2">Subdomain Support</h4>
+                    <p class="text-gray-400 text-sm">cdn2.videy.coach, upl.ad, vid7.online & semua domain lainnya</p>
                 </div>
                 <div class="bg-white/5 backdrop-blur rounded-xl p-6 border border-purple-500/20">
                     <div class="text-4xl mb-3">⚡</div>
-                    <h4 class="text-white font-bold mb-2">Super Smart</h4>
-                    <p class="text-gray-400 text-sm">Paste teks apapun, biarkan sistem bekerja</p>
+                    <h4 class="text-white font-bold mb-2">/f/ & /d/ Support</h4>
+                    <p class="text-gray-400 text-sm">/f/ untuk folder, /d/ untuk video langsung</p>
+                </div>
+            </div>
+
+            <!-- URL Format Examples -->
+            <div class="mt-8 max-w-2xl mx-auto bg-white/5 backdrop-blur rounded-xl p-6 border border-purple-500/20 text-left">
+                <h4 class="text-white font-bold mb-4 text-center">📋 Format URL yang Didukung</h4>
+                <div class="space-y-2 text-sm font-mono">
+                    <div class="flex items-center gap-3">
+                        <span class="bg-purple-500/30 text-purple-300 px-2 py-0.5 rounded text-xs flex-shrink-0">📁 Folder</span>
+                        <span class="text-gray-300">https://upl.ad/f/abc123</span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <span class="bg-purple-500/30 text-purple-300 px-2 py-0.5 rounded text-xs flex-shrink-0">📁 Folder</span>
+                        <span class="text-gray-300">https://vid7.online/f/xyz789</span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <span class="bg-blue-500/30 text-blue-300 px-2 py-0.5 rounded text-xs flex-shrink-0">🎬 Video</span>
+                        <span class="text-gray-300">https://cdn2.videy.coach/d/9pgjmw4ivhhj</span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <span class="bg-blue-500/30 text-blue-300 px-2 py-0.5 rounded text-xs flex-shrink-0">🎬 Video</span>
+                        <span class="text-gray-300">https://sub.domain.com/d/videoid</span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <span class="bg-purple-500/30 text-purple-300 px-2 py-0.5 rounded text-xs flex-shrink-0">📁 Folder</span>
+                        <span class="text-gray-300">https://sub.domain.com/f/folderid</span>
+                    </div>
                 </div>
             </div>
         </div>
@@ -193,21 +234,36 @@
 </div>
 
 <script>
-// Auto detect URLs from input text
+/**
+ * Detect URLs from input text.
+ * 
+ * Pattern yang didukung:
+ * - https://domain.com/f/xxx           (folder, domain biasa)
+ * - https://domain.com/d/xxx           (video, domain biasa)
+ * - https://sub.domain.com/f/xxx       (folder, 1 level subdomain)
+ * - https://sub.domain.com/d/xxx       (video, 1 level subdomain)
+ * - https://cdn2.videy.coach/d/xxx     (video, subdomain angka)
+ * - http:// juga didukung
+ * 
+ * Regex breakdown:
+ *   https?://                          - protocol http atau https
+ *   (?:[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?\.)+   - satu atau lebih label subdomain/domain (misal: cdn2. videy.)
+ *   [a-zA-Z]{2,}                       - TLD (coach, com, ad, online, dll)
+ *   \/[fd]\/                           - wajib ada /f/ atau /d/
+ *   [a-zA-Z0-9]+                       - ID video/folder (alphanumeric)
+ */
 function detectUrls(text) {
-    // Regex pattern universal - deteksi SEMUA domain dengan pattern /f/ atau /d/
-    // Matches: https://apapun.domain/f/xxx atau https://apapun.domain/d/xxx
-    // Pattern: http(s)://[domain apapun]/[f atau d]/[alphanumeric]
-    const urlPattern = /https?:\/\/[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\/[fd]\/[a-zA-Z0-9]+/gi;
-    
+    const urlPattern = /https?:\/\/(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}\/[fd]\/[a-zA-Z0-9]+/gi;
     const matches = text.match(urlPattern);
-    
-    if (!matches) {
-        return [];
-    }
-    
-    // Remove duplicates
+    if (!matches) return [];
     return [...new Set(matches)];
+}
+
+/** Tentukan tipe URL: 'folder' jika /f/, 'video' jika /d/ */
+function getUrlType(url) {
+    if (/\/f\//.test(url)) return 'folder';
+    if (/\/d\//.test(url)) return 'video';
+    return 'unknown';
 }
 
 // Real-time URL detection while typing
@@ -217,17 +273,31 @@ document.getElementById('urlInput').addEventListener('input', function() {
     
     const detectedBox = document.getElementById('detectedUrlsBox');
     const detectedCount = document.getElementById('detectedCount');
+    const detectedFolderCount = document.getElementById('detectedFolderCount');
+    const detectedVideoCount = document.getElementById('detectedVideoCount');
     const detectedList = document.getElementById('detectedUrlsList');
     
     if (urls.length > 0) {
         detectedBox.classList.remove('hidden');
         detectedCount.textContent = urls.length;
+
+        const folders = urls.filter(u => getUrlType(u) === 'folder').length;
+        const videos  = urls.filter(u => getUrlType(u) === 'video').length;
+        detectedFolderCount.textContent = folders;
+        detectedVideoCount.textContent  = videos;
         
-        detectedList.innerHTML = urls.map((url, index) => `
-            <div class="detected-url text-gray-300 font-mono text-xs">
-                <span class="text-purple-400 font-bold">#${index + 1}</span> ${escapeHtml(url)}
-            </div>
-        `).join('');
+        detectedList.innerHTML = urls.map((url, index) => {
+            const type    = getUrlType(url);
+            const typeClass  = type === 'video' ? 'type-video' : '';
+            const typeLabel  = type === 'folder' ? '📁 Folder' : '🎬 Video';
+            const labelClass = type === 'folder' ? 'text-purple-400' : 'text-blue-400';
+            return `
+                <div class="detected-url ${typeClass} text-gray-300 font-mono text-xs flex items-center gap-2">
+                    <span class="${labelClass} font-bold flex-shrink-0">#${index + 1} ${typeLabel}</span>
+                    <span class="truncate">${escapeHtml(url)}</span>
+                </div>
+            `;
+        }).join('');
     } else {
         detectedBox.classList.add('hidden');
     }
@@ -270,21 +340,27 @@ document.getElementById('searchForm').addEventListener('submit', async (e) => {
     const input = urlInput.value.trim();
     
     if (!input) {
-        showError('Silakan masukkan teks atau URL Vidoy');
+        showError('Silakan masukkan teks atau URL');
         return;
     }
     
-    // Auto detect URLs from input text
     const urls = detectUrls(input);
     
     if (urls.length === 0) {
-        showError('❌ Tidak ada URL yang terdeteksi!\n\nPastikan URL memiliki format:\n- https://domain.com/f/xxxxx (folder)\n- https://domain.com/d/xxxxx (single video)\n\nContoh: https://upl.ad/f/abc123 atau https://vid7.online/f/xyz789');
+        showError(
+            '❌ Tidak ada URL yang terdeteksi!\n\n' +
+            'Pastikan URL memiliki format:\n' +
+            '- https://domain.com/f/xxxxx        (folder)\n' +
+            '- https://domain.com/d/xxxxx        (video)\n' +
+            '- https://sub.domain.com/f/xxxxx    (folder, subdomain)\n' +
+            '- https://sub.domain.com/d/xxxxx    (video, subdomain)\n\n' +
+            'Contoh: https://cdn2.videy.coach/d/9pgjmw4ivhhj'
+        );
         return;
     }
     
     console.log('🤖 Auto Detected URLs:', urls);
     
-    // Reset global stats
     globalStats = {
         totalFolders: urls.length,
         processedFolders: 0,
@@ -293,39 +369,32 @@ document.getElementById('searchForm').addEventListener('submit', async (e) => {
         failedVideos: 0
     };
     
-    // Show loading
     setLoading(true);
     hideAll();
     showProgress();
     updateProgress();
     
-    // Clear previous results
     document.getElementById('videosContainer').innerHTML = '';
     
-    // Process each URL
     for (let i = 0; i < urls.length; i++) {
-        const url = urls[i];
-        await processUrl(url, i + 1);
-        
-        // Update progress
+        await processUrl(urls[i], i + 1);
         globalStats.processedFolders++;
         updateProgress();
     }
     
     setLoading(false);
     
-    // Show results
     if (globalStats.totalVideos > 0) {
         document.getElementById('videosContainer').classList.remove('hidden');
     } else {
-        showError('Tidak ada video yang berhasil diambil dari semua folder');
+        showError('Tidak ada video yang berhasil diambil dari semua URL');
     }
 });
 
 async function processUrl(url, folderNumber) {
     try {
         const apiUrl = `/api/index.php?url=${encodeURIComponent(url)}`;
-        console.log(`Processing folder ${folderNumber}:`, apiUrl);
+        console.log(`Processing #${folderNumber} [${getUrlType(url)}]:`, apiUrl);
         
         const response = await fetch(apiUrl);
         
@@ -341,31 +410,27 @@ async function processUrl(url, folderNumber) {
         }
         
         const data = await response.json();
-        console.log(`Folder ${folderNumber} response:`, data);
+        console.log(`#${folderNumber} response:`, data);
         
         if (data.success) {
-            // Handle folder batch
             if (data.type === 'folder' && data.videos && data.videos.length > 0) {
                 displayFolderVideos(data, url, folderNumber);
                 globalStats.totalVideos += data.videos.length;
                 globalStats.successVideos += data.success_count || data.videos.filter(v => v.success).length;
                 globalStats.failedVideos += (data.videos.length - (data.success_count || data.videos.filter(v => v.success).length));
-            }
-            // Handle single video
-            else if (data.data && data.data.download_url) {
+            } else if (data.data && data.data.download_url) {
                 const videoData = convertSingleToFolder(data);
                 displayFolderVideos(videoData, url, folderNumber);
                 globalStats.totalVideos += 1;
                 globalStats.successVideos += 1;
-            }
-            else {
+            } else {
                 displayFolderError(url, folderNumber, 'Tidak ada video ditemukan');
             }
         } else {
-            displayFolderError(url, folderNumber, data.message || data.error || 'Gagal memproses folder');
+            displayFolderError(url, folderNumber, data.message || data.error || 'Gagal memproses URL');
         }
     } catch (error) {
-        console.error(`Error processing folder ${folderNumber}:`, error);
+        console.error(`Error processing #${folderNumber}:`, error);
         displayFolderError(url, folderNumber, error.message);
     }
     
@@ -398,13 +463,16 @@ function displayFolderVideos(data, sourceUrl, folderNumber) {
     
     const videos = data.videos || [];
     const successCount = videos.filter(v => v.success).length;
+    const urlType = getUrlType(sourceUrl);
+    const typeIcon  = urlType === 'video' ? '🎬' : '📁';
+    const typeLabel = urlType === 'video' ? 'Video' : 'Folder';
     
     folderSection.innerHTML = `
         <div class="bg-white/5 backdrop-blur-lg rounded-2xl border-2 border-purple-500/30 p-6">
             <div class="flex flex-wrap items-center justify-between gap-4 mb-4">
                 <div>
-                    <h2 class="text-2xl font-bold text-white mb-2">
-                        📁 Folder #${folderNumber}
+                    <h2 class="text-2xl font-bold text-white mb-1">
+                        ${typeIcon} ${typeLabel} #${folderNumber}
                     </h2>
                     <p class="text-gray-400 text-sm break-all">${escapeHtml(sourceUrl)}</p>
                 </div>
@@ -421,7 +489,6 @@ function displayFolderVideos(data, sourceUrl, folderNumber) {
             </div>
             
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6" id="folder-${folderNumber}-grid">
-                <!-- Videos will be inserted here -->
             </div>
         </div>
     `;
@@ -437,6 +504,9 @@ function displayFolderVideos(data, sourceUrl, folderNumber) {
 
 function displayFolderError(sourceUrl, folderNumber, errorMessage) {
     const container = document.getElementById('videosContainer');
+    const urlType  = getUrlType(sourceUrl);
+    const typeIcon = urlType === 'video' ? '🎬' : '📁';
+    const typeLabel = urlType === 'video' ? 'Video' : 'Folder';
     
     const folderSection = document.createElement('div');
     folderSection.className = 'space-y-4';
@@ -451,7 +521,7 @@ function displayFolderError(sourceUrl, folderNumber, errorMessage) {
                 </svg>
                 <div class="flex-1">
                     <h2 class="text-xl font-bold text-red-300 mb-2">
-                        ❌ Folder #${folderNumber} - Error
+                        ❌ ${typeIcon} ${typeLabel} #${folderNumber} - Error
                     </h2>
                     <p class="text-gray-400 text-sm break-all mb-2">${escapeHtml(sourceUrl)}</p>
                     <p class="text-red-200">${escapeHtml(errorMessage)}</p>
@@ -466,9 +536,9 @@ function displayFolderError(sourceUrl, folderNumber, errorMessage) {
 
 function updateProgress() {
     document.getElementById('totalFolders').textContent = globalStats.totalFolders;
-    document.getElementById('totalVideos').textContent = globalStats.totalVideos;
+    document.getElementById('totalVideos').textContent  = globalStats.totalVideos;
     document.getElementById('successCount').textContent = globalStats.successVideos;
-    document.getElementById('failedCount').textContent = globalStats.failedVideos;
+    document.getElementById('failedCount').textContent  = globalStats.failedVideos;
     
     const progressPercent = globalStats.totalFolders > 0 
         ? (globalStats.processedFolders / globalStats.totalFolders) * 100 
@@ -484,10 +554,10 @@ function showProgress() {
 }
 
 function setLoading(loading) {
-    const searchBtn = document.getElementById('searchBtn');
-    const searchIcon = document.getElementById('searchIcon');
+    const searchBtn     = document.getElementById('searchBtn');
+    const searchIcon    = document.getElementById('searchIcon');
     const loadingSpinner = document.getElementById('loadingSpinner');
-    const searchText = document.getElementById('searchText');
+    const searchText    = document.getElementById('searchText');
     
     if (loading) {
         searchBtn.disabled = true;
@@ -515,8 +585,8 @@ function showError(message) {
 }
 
 function createVideoCard(video, index) {
-    const isError = !video.success;
-    const name = video.title || 'Unknown';
+    const isError  = !video.success;
+    const name     = video.title || 'Unknown';
     const thumbnail = video.thumbnail || '';
     const videoUrl = video.download_url || '#';
     
