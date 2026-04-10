@@ -2,6 +2,13 @@
 /**
  * API Endpoint untuk Download Video dari veidtr.com
  * Fixed Version - Auto Main Domain Detection via Redirect
+ *
+ * Changelog:
+ * - detectMainDomain() kini pakai GET request kecil (range 0-0) bukan HEAD,
+ *   karena banyak CDN server menolak HEAD dan mengembalikan redirect berbeda.
+ * - fetchContent() sekarang menerima HTTP 200 dan 206 (partial content).
+ * - Tambah fallback: jika GET range gagal, coba HEAD sebagai backup.
+ * - extractBaseDomain() lebih robust, strip port jika ada.
  */
 
 header('Content-Type: application/json');
@@ -9,7 +16,6 @@ header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type');
 
-// Handle preflight OPTIONS request
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
     exit();
@@ -18,8 +24,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 class Vid7Downloader {
     private $userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
     private $debug = false;
-
-    // Cache hasil deteksi domain agar tidak fetch ulang untuk domain yang sama
     private $domainCache = [];
 
     public function __construct($debug = false) {
@@ -41,27 +45,98 @@ class Vid7Downloader {
 
     /**
      * Detect main domain by following redirects from input URL.
-     * Returns the final domain after all redirects (e.g. "veidtr.com").
-     * Falls back to the original domain if no redirect found.
+     *
+     * Menggunakan GET request dengan Range: bytes=0-0 (bukan HEAD),
+     * karena banyak CDN/video server:
+     *   1. Menolak HEAD request (HTTP 405)
+     *   2. Memberikan redirect berbeda untuk HEAD vs GET
+     *
+     * Fallback ke HEAD jika GET range gagal.
+     * Fallback ke domain asal jika keduanya gagal.
      */
     private function detectMainDomain($url) {
         $inputDomain = $this->extractBaseDomain($url);
 
-        // Return cached result if already resolved for this domain
         if (isset($this->domainCache[$inputDomain])) {
             $this->log("Domain cache hit: $inputDomain -> " . $this->domainCache[$inputDomain]);
             return $this->domainCache[$inputDomain];
         }
 
-        $this->log("Detecting main domain for: $inputDomain");
+        $this->log("Detecting main domain for: $inputDomain (url: $url)");
 
+        // --- Attempt 1: GET dengan Range bytes=0-0 ---
+        // Ini mengikuti redirect persis seperti browser biasa,
+        // tapi hanya download 1 byte sehingga sangat ringan.
+        $finalDomain = $this->detectViaGetRange($url);
+
+        // --- Attempt 2: HEAD request sebagai fallback ---
+        if (!$finalDomain || $finalDomain === $inputDomain) {
+            $headDomain = $this->detectViaHead($url);
+            // Pakai hasil HEAD jika berbeda dari input (artinya ada redirect nyata)
+            if ($headDomain && $headDomain !== $inputDomain) {
+                $finalDomain = $headDomain;
+            }
+        }
+
+        // --- Fallback: pakai domain asal ---
+        if (!$finalDomain) {
+            $finalDomain = $inputDomain;
+        }
+
+        $this->log("Resolved: $inputDomain -> $finalDomain");
+
+        $this->domainCache[$inputDomain] = $finalDomain;
+        $this->domainCache[$finalDomain] = $finalDomain;
+
+        return $finalDomain;
+    }
+
+    private function detectViaGetRange($url) {
         $ch = curl_init();
         curl_setopt_array($ch, [
             CURLOPT_URL            => $url,
             CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_FOLLOWLOCATION => true,   // ikuti semua redirect
+            CURLOPT_FOLLOWLOCATION => true,
             CURLOPT_MAXREDIRS      => 10,
-            CURLOPT_NOBODY         => true,   // HEAD request – cukup ambil header
+            CURLOPT_HTTPHEADER     => [
+                'User-Agent: ' . $this->userAgent,
+                'Range: bytes=0-0',   // hanya minta 1 byte, sangat ringan
+                'Accept: */*',
+            ],
+            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_SSL_VERIFYHOST => false,
+            CURLOPT_TIMEOUT        => 15,
+        ]);
+
+        curl_exec($ch);
+        $finalUrl  = curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
+        $httpCode  = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
+        curl_close($ch);
+
+        $this->log("GET range: HTTP $httpCode, final URL: $finalUrl");
+
+        if ($curlError) {
+            $this->log("GET range cURL error: $curlError");
+            return null;
+        }
+
+        // HTTP 200, 206 (partial), atau 2xx lain dianggap sukses
+        if ($httpCode >= 200 && $httpCode < 300 && $finalUrl) {
+            return $this->extractBaseDomain($finalUrl);
+        }
+
+        return null;
+    }
+
+    private function detectViaHead($url) {
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL            => $url,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS      => 10,
+            CURLOPT_NOBODY         => true,
             CURLOPT_HTTPHEADER     => [
                 'User-Agent: ' . $this->userAgent,
             ],
@@ -71,37 +146,28 @@ class Vid7Downloader {
         ]);
 
         curl_exec($ch);
-        $finalUrl  = curl_getinfo($ch, CURLINFO_EFFECTIVE_URL); // URL setelah redirect
+        $finalUrl  = curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
         $httpCode  = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $curlError = curl_error($ch);
         curl_close($ch);
 
-        $this->log("Redirect check HTTP $httpCode, final URL: $finalUrl");
+        $this->log("HEAD: HTTP $httpCode, final URL: $finalUrl");
 
         if ($curlError) {
-            $this->log("cURL error during domain detection: $curlError");
+            $this->log("HEAD cURL error: $curlError");
+            return null;
         }
 
-        // Ambil domain dari URL akhir
-        $finalDomain = $finalUrl ? $this->extractBaseDomain($finalUrl) : $inputDomain;
-
-        // Jika tidak berubah (misal redirect ke path yang sama), pakai inputDomain
-        if (empty($finalDomain)) {
-            $finalDomain = $inputDomain;
+        if ($finalUrl) {
+            return $this->extractBaseDomain($finalUrl);
         }
 
-        $this->log("Resolved main domain: $inputDomain -> $finalDomain");
-
-        // Simpan ke cache (keduanya arah)
-        $this->domainCache[$inputDomain] = $finalDomain;
-        $this->domainCache[$finalDomain] = $finalDomain; // domain utama ke dirinya sendiri
-
-        return $finalDomain;
+        return null;
     }
 
     /**
      * Normalize URL ke main domain yang terdeteksi.
-     * Contoh: https://vidi64.com/f/abc  ->  https://veidtr.com/f/abc
+     * Contoh: https://cdn2.videy.coach/d/abc  ->  https://vide.la/d/abc
      */
     private function normalizeToMainDomain($url, $mainDomain) {
         $normalized = preg_replace('/https?:\/\/[^\/]+/', 'https://' . $mainDomain, $url);
@@ -131,9 +197,14 @@ class Vid7Downloader {
         return null;
     }
 
+    /**
+     * Extract base domain dari URL, strip port jika ada.
+     * Contoh: https://cdn2.videy.coach:8080/d/xxx  ->  cdn2.videy.coach
+     */
     private function extractBaseDomain($url) {
-        if (preg_match('/https?:\/\/([^\/]+)/', $url, $matches)) {
-            return $matches[1];
+        if (preg_match('/https?:\/\/([^\/\?#]+)/', $url, $matches)) {
+            // Strip port number jika ada (misal :8080)
+            return preg_replace('/:\d+$/', '', $matches[1]);
         }
         return '';
     }
@@ -227,9 +298,6 @@ class Vid7Downloader {
         return "Video {$videoId}";
     }
 
-    /**
-     * Process folder – deteksi main domain otomatis lalu proses semua video.
-     */
     public function processFolderBatch($folderUrl) {
         $folderId = $this->extractFolderId($folderUrl);
         if (!$folderId) {
@@ -240,8 +308,7 @@ class Vid7Downloader {
             ];
         }
 
-        // Auto-detect main domain via redirect
-        $mainDomain    = $this->detectMainDomain($folderUrl);
+        $mainDomain     = $this->detectMainDomain($folderUrl);
         $originalDomain = $this->extractBaseDomain($folderUrl);
         $normalizedUrl  = $this->normalizeToMainDomain($folderUrl, $mainDomain);
 
@@ -250,7 +317,6 @@ class Vid7Downloader {
         $this->log("Main Domain     : $mainDomain");
         $this->log("Normalized URL  : $normalizedUrl");
 
-        // Fetch folder content
         $folderContent = $this->fetchContent($normalizedUrl);
         if (!$folderContent) {
             return [
@@ -258,8 +324,8 @@ class Vid7Downloader {
                 'error'      => 'Failed to fetch folder page',
                 'message'    => 'Gagal mengambil halaman folder. Pastikan URL valid dan dapat diakses.',
                 'debug_info' => [
-                    'folder_id'  => $folderId,
-                    'tried_url'  => $normalizedUrl,
+                    'folder_id'   => $folderId,
+                    'tried_url'   => $normalizedUrl,
                     'main_domain' => $mainDomain,
                 ]
             ];
@@ -348,6 +414,10 @@ class Vid7Downloader {
         return bin2hex($videoId);
     }
 
+    /**
+     * Fetch content dari URL.
+     * Menerima HTTP 200 dan 206 (partial content) sebagai sukses.
+     */
     private function fetchContent($url, $referer = null, $returnHeaders = false) {
         $ch = curl_init();
 
@@ -366,6 +436,7 @@ class Vid7Downloader {
             CURLOPT_URL            => $url,
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS      => 10,
             CURLOPT_HTTPHEADER     => $headers,
             CURLOPT_SSL_VERIFYPEER => false,
             CURLOPT_SSL_VERIFYHOST => false,
@@ -381,12 +452,18 @@ class Vid7Downloader {
         $this->log("Fetching: $url");
         $this->log("HTTP Code: $httpCode");
 
-        if ($httpCode !== 200) {
-            $this->log("Error: " . $error);
+        if ($error) {
+            $this->log("cURL error: $error");
             return null;
         }
 
-        return $response;
+        // Terima 200 (OK) dan 206 (Partial Content)
+        if ($httpCode === 200 || $httpCode === 206) {
+            return $response;
+        }
+
+        $this->log("Unexpected HTTP code: $httpCode");
+        return null;
     }
 
     // =========================================================
@@ -409,7 +486,6 @@ class Vid7Downloader {
             }
         }
 
-        // Fallback dengan main domain yang terdeteksi
         $fallbackUrl = "https://{$mainDomain}/embed.php?bucket=temporary&id={$videoId}";
         $this->log("Using fallback embed URL: $fallbackUrl");
         return $fallbackUrl;
@@ -466,7 +542,6 @@ class Vid7Downloader {
     // =========================================================
 
     public function getDownloadInfo($url) {
-        // Folder mode
         if ($this->isFolder($url)) {
             $this->log("Detected folder URL (/f/), processing all videos in batch...");
             return $this->processFolderBatch($url);
@@ -474,7 +549,6 @@ class Vid7Downloader {
 
         $this->log("Detected single video URL, processing...");
 
-        // Step 1: Extract video ID
         $videoId = $this->extractVideoId($url);
         if (!$videoId) {
             return [
@@ -484,7 +558,6 @@ class Vid7Downloader {
             ];
         }
 
-        // Step 2: Auto-detect main domain via redirect
         $originalDomain = $this->extractBaseDomain($url);
         $mainDomain     = $this->detectMainDomain($url);
         $normalizedUrl  = $this->normalizeToMainDomain($url, $mainDomain);
@@ -502,13 +575,13 @@ class Vid7Downloader {
                 'success' => true,
                 'method'  => 'direct_embed',
                 'data'    => [
-                    'video_id'       => $videoId,
-                    'original_domain'=> $originalDomain,
-                    'main_domain'    => $mainDomain,
-                    'download_url'   => $directResult['mp4_url'],
-                    'thumbnail'      => $posterUrl,
-                    'embed_url'      => $directResult['embed_url'],
-                    'title'          => "Video {$videoId}"
+                    'video_id'        => $videoId,
+                    'original_domain' => $originalDomain,
+                    'main_domain'     => $mainDomain,
+                    'download_url'    => $directResult['mp4_url'],
+                    'thumbnail'       => $posterUrl,
+                    'embed_url'       => $directResult['embed_url'],
+                    'title'           => "Video {$videoId}"
                 ]
             ];
         }
@@ -541,10 +614,10 @@ class Vid7Downloader {
         $embedContent = $this->fetchContent($embedUrl, $ipUrl);
         if (!$embedContent) {
             return [
-                'success'    => false,
-                'error'      => 'Failed to fetch embed page',
-                'message'    => 'Gagal mengambil halaman embed',
-                'tried_url'  => $embedUrl
+                'success'   => false,
+                'error'     => 'Failed to fetch embed page',
+                'message'   => 'Gagal mengambil halaman embed',
+                'tried_url' => $embedUrl
             ];
         }
 
@@ -596,6 +669,7 @@ class Vid7Downloader {
             CURLOPT_URL            => $videoUrl,
             CURLOPT_RETURNTRANSFER => false,
             CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS      => 10,
             CURLOPT_HTTPHEADER     => [
                 'User-Agent: ' . $this->userAgent,
                 'Referer: https://' . $refererDomain . '/'
@@ -622,8 +696,8 @@ class Vid7Downloader {
 
 try {
     if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-        $debug       = isset($_GET['debug']) && $_GET['debug'] == '1';
-        $downloader  = new Vid7Downloader($debug);
+        $debug      = isset($_GET['debug']) && $_GET['debug'] == '1';
+        $downloader = new Vid7Downloader($debug);
 
         // Test endpoint
         if (isset($_GET['test'])) {
@@ -661,9 +735,10 @@ try {
                     'download'       => '?video_url=VIDEO_URL&download=1&filename=video.mp4'
                 ],
                 'notes' => [
-                    'auto_domain' => 'Main domain dideteksi otomatis via redirect dari URL input',
-                    '/d/ and /e/' => 'Single video URLs',
-                    '/f/'         => 'Folder URL – otomatis proses semua video secara batch'
+                    'auto_domain'    => 'Main domain dideteksi otomatis via redirect dari URL input',
+                    'subdomain_cdn'  => 'CDN subdomain (mis: cdn2.videy.coach) otomatis di-resolve ke domain utama',
+                    '/d/ and /e/'   => 'Single video URLs',
+                    '/f/'            => 'Folder URL – otomatis proses semua video secara batch'
                 ]
             ], JSON_PRETTY_PRINT);
         }
