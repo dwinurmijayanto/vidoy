@@ -9,6 +9,8 @@
  * - fetchContent() sekarang menerima HTTP 200 dan 206 (partial content).
  * - Tambah fallback: jika GET range gagal, coba HEAD sebagai backup.
  * - extractBaseDomain() lebih robust, strip port jika ada.
+ * - [NEW] processFolderBatch() kini mendukung pagination (?p=1, ?p=2, ...)
+ *         Loop otomatis hingga halaman yang tidak mengandung video.
  */
 
 header('Content-Type: application/json');
@@ -43,17 +45,6 @@ class Vid7Downloader {
     //  AUTO DOMAIN DETECTION
     // =========================================================
 
-    /**
-     * Detect main domain by following redirects from input URL.
-     *
-     * Menggunakan GET request dengan Range: bytes=0-0 (bukan HEAD),
-     * karena banyak CDN/video server:
-     *   1. Menolak HEAD request (HTTP 405)
-     *   2. Memberikan redirect berbeda untuk HEAD vs GET
-     *
-     * Fallback ke HEAD jika GET range gagal.
-     * Fallback ke domain asal jika keduanya gagal.
-     */
     private function detectMainDomain($url) {
         $inputDomain = $this->extractBaseDomain($url);
 
@@ -64,21 +55,15 @@ class Vid7Downloader {
 
         $this->log("Detecting main domain for: $inputDomain (url: $url)");
 
-        // --- Attempt 1: GET dengan Range bytes=0-0 ---
-        // Ini mengikuti redirect persis seperti browser biasa,
-        // tapi hanya download 1 byte sehingga sangat ringan.
         $finalDomain = $this->detectViaGetRange($url);
 
-        // --- Attempt 2: HEAD request sebagai fallback ---
         if (!$finalDomain || $finalDomain === $inputDomain) {
             $headDomain = $this->detectViaHead($url);
-            // Pakai hasil HEAD jika berbeda dari input (artinya ada redirect nyata)
             if ($headDomain && $headDomain !== $inputDomain) {
                 $finalDomain = $headDomain;
             }
         }
 
-        // --- Fallback: pakai domain asal ---
         if (!$finalDomain) {
             $finalDomain = $inputDomain;
         }
@@ -100,7 +85,7 @@ class Vid7Downloader {
             CURLOPT_MAXREDIRS      => 10,
             CURLOPT_HTTPHEADER     => [
                 'User-Agent: ' . $this->userAgent,
-                'Range: bytes=0-0',   // hanya minta 1 byte, sangat ringan
+                'Range: bytes=0-0',
                 'Accept: */*',
             ],
             CURLOPT_SSL_VERIFYPEER => false,
@@ -121,7 +106,6 @@ class Vid7Downloader {
             return null;
         }
 
-        // HTTP 200, 206 (partial), atau 2xx lain dianggap sukses
         if ($httpCode >= 200 && $httpCode < 300 && $finalUrl) {
             return $this->extractBaseDomain($finalUrl);
         }
@@ -165,10 +149,6 @@ class Vid7Downloader {
         return null;
     }
 
-    /**
-     * Normalize URL ke main domain yang terdeteksi.
-     * Contoh: https://cdn2.videy.coach/d/abc  ->  https://vide.la/d/abc
-     */
     private function normalizeToMainDomain($url, $mainDomain) {
         $normalized = preg_replace('/https?:\/\/[^\/]+/', 'https://' . $mainDomain, $url);
         $this->log("Normalized URL: $url  ->  $normalized");
@@ -197,16 +177,29 @@ class Vid7Downloader {
         return null;
     }
 
-    /**
-     * Extract base domain dari URL, strip port jika ada.
-     * Contoh: https://cdn2.videy.coach:8080/d/xxx  ->  cdn2.videy.coach
-     */
     private function extractBaseDomain($url) {
         if (preg_match('/https?:\/\/([^\/\?#]+)/', $url, $matches)) {
-            // Strip port number jika ada (misal :8080)
             return preg_replace('/:\d+$/', '', $matches[1]);
         }
         return '';
+    }
+
+    /**
+     * Build folder page URL.
+     * Halaman 1 bisa diakses tanpa parameter maupun dengan ?p=1.
+     * Halaman 2+ menggunakan ?p=N.
+     */
+    private function buildFolderPageUrl($baseFolderUrl, $page) {
+        // Hapus parameter ?p yang mungkin sudah ada di URL sebelumnya
+        $cleanUrl = preg_replace('/[?&]p=\d+/', '', $baseFolderUrl);
+        $cleanUrl = rtrim($cleanUrl, '?&');
+
+        if ($page <= 1) {
+            return $cleanUrl;
+        }
+
+        $separator = (strpos($cleanUrl, '?') !== false) ? '&' : '?';
+        return $cleanUrl . $separator . 'p=' . $page;
     }
 
     // =========================================================
@@ -214,7 +207,7 @@ class Vid7Downloader {
     // =========================================================
 
     private function extractVideoUrlsFromFolder($folderUrl) {
-        $this->log("Fetching folder: $folderUrl");
+        $this->log("Fetching folder page: $folderUrl");
 
         $content = $this->fetchContent($folderUrl);
         if (!$content) {
@@ -222,7 +215,7 @@ class Vid7Downloader {
             return null;
         }
 
-        $this->log("Content fetched successfully, length: " . strlen($content));
+        $this->log("Content fetched, length: " . strlen($content));
 
         $videos   = [];
         $seenIds  = [];
@@ -280,8 +273,10 @@ class Vid7Downloader {
             }
         }
 
-        $this->log("Total unique videos found: " . count($videos));
-        return $videos;
+        $this->log("Total videos on this page: " . count($videos));
+
+        // Kembalikan juga raw content agar bisa dipakai untuk extract title
+        return ['videos' => $videos, 'content' => $content];
     }
 
     private function extractVideoTitle($content, $videoId) {
@@ -310,64 +305,89 @@ class Vid7Downloader {
 
         $mainDomain     = $this->detectMainDomain($folderUrl);
         $originalDomain = $this->extractBaseDomain($folderUrl);
-        $normalizedUrl  = $this->normalizeToMainDomain($folderUrl, $mainDomain);
 
-        $this->log("Processing folder: $folderId");
-        $this->log("Original Domain : $originalDomain");
-        $this->log("Main Domain     : $mainDomain");
-        $this->log("Normalized URL  : $normalizedUrl");
+        // URL dasar folder tanpa parameter paginasi
+        $baseFolderUrl = "https://{$mainDomain}/f/{$folderId}";
 
-        $folderContent = $this->fetchContent($normalizedUrl);
-        if (!$folderContent) {
-            return [
-                'success'    => false,
-                'error'      => 'Failed to fetch folder page',
-                'message'    => 'Gagal mengambil halaman folder. Pastikan URL valid dan dapat diakses.',
-                'debug_info' => [
-                    'folder_id'   => $folderId,
-                    'tried_url'   => $normalizedUrl,
-                    'main_domain' => $mainDomain,
-                ]
-            ];
+        $this->log("Processing folder : $folderId");
+        $this->log("Original Domain  : $originalDomain");
+        $this->log("Main Domain      : $mainDomain");
+        $this->log("Base Folder URL  : $baseFolderUrl");
+
+        // -------------------------------------------------------
+        //  PAGINATION LOOP
+        //  Mulai dari halaman 1, lanjutkan sampai halaman kosong.
+        // -------------------------------------------------------
+        $allVideos    = [];
+        $seenVideoIds = [];
+        $pageData     = [];   // simpan content per halaman untuk extract title
+        $page         = 1;
+        $maxPages     = 100;  // safety cap – hindari loop tak terbatas
+
+        while ($page <= $maxPages) {
+            $pageUrl = $this->buildFolderPageUrl($baseFolderUrl, $page);
+            $this->log("Fetching page $page: $pageUrl");
+
+            $pageResult = $this->extractVideoUrlsFromFolder($pageUrl);
+
+            if ($pageResult === null) {
+                // Gagal fetch – anggap sudah habis
+                $this->log("Page $page: failed to fetch, stopping pagination");
+                break;
+            }
+
+            $pageVideos = $pageResult['videos'];
+
+            if (empty($pageVideos)) {
+                // Halaman kosong – tidak ada video lagi
+                $this->log("Page $page: no videos found, stopping pagination");
+                break;
+            }
+
+            $this->log("Page $page: found " . count($pageVideos) . " video(s)");
+
+            // Simpan content halaman ini untuk lookup judul
+            $pageData[$page] = $pageResult['content'];
+
+            // Tambahkan video baru (hindari duplikat lintas halaman)
+            foreach ($pageVideos as $video) {
+                if (!isset($seenVideoIds[$video['video_id']])) {
+                    $seenVideoIds[$video['video_id']] = $page;
+                    $allVideos[] = array_merge($video, ['page' => $page]);
+                }
+            }
+
+            $page++;
         }
 
-        $this->log("Folder content length: " . strlen($folderContent));
+        $totalPages = $page - 1;
+        $this->log("Pagination done. Pages scanned: $totalPages, total videos: " . count($allVideos));
 
-        $videoList = $this->extractVideoUrlsFromFolder($normalizedUrl);
-        if ($videoList === null) {
-            return [
-                'success'    => false,
-                'error'      => 'Failed to extract videos from folder',
-                'message'    => 'Gagal mengekstrak video dari folder',
-                'debug_info' => ['content_preview' => substr($folderContent, 0, 500)]
-            ];
-        }
-
-        if (empty($videoList)) {
+        if (empty($allVideos)) {
             return [
                 'success'      => false,
                 'error'        => 'No videos found in this folder',
-                'message'      => 'Tidak ada video yang ditemukan.',
+                'message'      => 'Tidak ada video yang ditemukan di folder ini.',
                 'folder_id'    => $folderId,
+                'total_pages'  => $totalPages,
                 'total_videos' => 0,
-                'videos'       => [],
-                'debug_info'   => [
-                    'folder_url'      => $normalizedUrl,
-                    'content_length'  => strlen($folderContent),
-                    'content_preview' => substr($folderContent, 0, 1000)
-                ]
+                'videos'       => []
             ];
         }
 
+        // -------------------------------------------------------
+        //  PROSES TIAP VIDEO
+        // -------------------------------------------------------
         $results      = [];
         $successCount = 0;
         $failCount    = 0;
 
-        foreach ($videoList as $video) {
-            $videoUrl = "https://{$mainDomain}" . $video['url'];
-            $title    = $this->extractVideoTitle($folderContent, $video['video_id']);
+        foreach ($allVideos as $video) {
+            $videoUrl    = "https://{$mainDomain}" . $video['url'];
+            $pageContent = $pageData[$video['page']] ?? '';
+            $title       = $this->extractVideoTitle($pageContent, $video['video_id']);
 
-            $this->log("Processing: " . $video['video_id']);
+            $this->log("Processing video: " . $video['video_id'] . " (page " . $video['page'] . ")");
 
             $result = $this->getDownloadInfo($videoUrl);
 
@@ -377,6 +397,7 @@ class Vid7Downloader {
                     'success'      => true,
                     'video_id'     => $video['video_id'],
                     'title'        => $title,
+                    'page'         => $video['page'],
                     'download_url' => $result['data']['download_url'],
                     'thumbnail'    => $result['data']['thumbnail'],
                     'embed_url'    => $result['data']['embed_url']
@@ -387,6 +408,7 @@ class Vid7Downloader {
                     'success'  => false,
                     'video_id' => $video['video_id'],
                     'title'    => $title,
+                    'page'     => $video['page'],
                     'error'    => $result['error']
                 ];
             }
@@ -398,7 +420,8 @@ class Vid7Downloader {
             'folder_id'       => $folderId,
             'original_domain' => $originalDomain,
             'main_domain'     => $mainDomain,
-            'total_videos'    => count($videoList),
+            'total_pages'     => $totalPages,
+            'total_videos'    => count($allVideos),
             'processed'       => count($results),
             'success_count'   => $successCount,
             'fail_count'      => $failCount,
@@ -414,10 +437,6 @@ class Vid7Downloader {
         return bin2hex($videoId);
     }
 
-    /**
-     * Fetch content dari URL.
-     * Menerima HTTP 200 dan 206 (partial content) sebagai sukses.
-     */
     private function fetchContent($url, $referer = null, $returnHeaders = false) {
         $ch = curl_init();
 
@@ -457,7 +476,6 @@ class Vid7Downloader {
             return null;
         }
 
-        // Terima 200 (OK) dan 206 (Partial Content)
         if ($httpCode === 200 || $httpCode === 206) {
             return $response;
         }
@@ -730,15 +748,15 @@ try {
                 'message' => 'Parameter URL tidak ditemukan',
                 'usage'   => [
                     'get_info'       => '?url=https://DOMAIN/e/VIDEO_ID (single video)',
-                    'get_folder'     => '?url=https://DOMAIN/f/FOLDER_ID (batch all videos)',
+                    'get_folder'     => '?url=https://DOMAIN/f/FOLDER_ID (batch ALL pages)',
                     'get_info_debug' => '?url=https://DOMAIN/e/VIDEO_ID&debug=1',
                     'download'       => '?video_url=VIDEO_URL&download=1&filename=video.mp4'
                 ],
                 'notes' => [
-                    'auto_domain'    => 'Main domain dideteksi otomatis via redirect dari URL input',
-                    'subdomain_cdn'  => 'CDN subdomain (mis: cdn2.videy.coach) otomatis di-resolve ke domain utama',
+                    'auto_domain'   => 'Main domain dideteksi otomatis via redirect dari URL input',
+                    'subdomain_cdn' => 'CDN subdomain otomatis di-resolve ke domain utama',
                     '/d/ and /e/'   => 'Single video URLs',
-                    '/f/'            => 'Folder URL – otomatis proses semua video secara batch'
+                    '/f/'           => 'Folder URL – otomatis loop semua halaman (?p=1, ?p=2, ...) sampai habis'
                 ]
             ], JSON_PRETTY_PRINT);
         }
