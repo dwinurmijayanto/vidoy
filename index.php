@@ -39,6 +39,45 @@
             border-left-color: #3b82f6;
             background: rgba(59, 130, 246, 0.1);
         }
+        .url-list-box {
+            background: rgba(16, 185, 129, 0.07);
+            border: 1.5px solid rgba(16, 185, 129, 0.35);
+            border-radius: 1rem;
+            padding: 1.25rem 1.5rem;
+            margin-top: 1rem;
+        }
+        .url-list-box textarea {
+            width: 100%;
+            background: rgba(0,0,0,0.25);
+            color: #a7f3d0;
+            font-family: monospace;
+            font-size: 0.78rem;
+            border: 1px solid rgba(16,185,129,0.3);
+            border-radius: 0.5rem;
+            padding: 0.75rem;
+            resize: vertical;
+            outline: none;
+            min-height: 90px;
+        }
+        .url-list-box textarea:focus {
+            border-color: rgba(16,185,129,0.6);
+        }
+        .copy-btn {
+            background: linear-gradient(to right, #10b981, #059669);
+            color: white;
+            font-weight: 700;
+            padding: 0.45rem 1.1rem;
+            border-radius: 0.5rem;
+            border: none;
+            cursor: pointer;
+            font-size: 0.82rem;
+            transition: opacity 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+        .copy-btn:hover { opacity: 0.85; }
+        .copy-btn.copied { background: linear-gradient(to right, #6366f1, #4f46e5); }
     </style>
 </head>
 <body>
@@ -92,7 +131,6 @@
                         </div>
                     </div>
                     <div id="detectedUrlsList" class="space-y-1 max-h-48 overflow-y-auto text-sm">
-                        <!-- Detected URLs will be listed here -->
                     </div>
                 </div>
                 
@@ -167,7 +205,6 @@
 
         <!-- Videos Container -->
         <div id="videosContainer" class="hidden space-y-8">
-            <!-- Folders will be inserted here dynamically -->
         </div>
 
         <!-- Empty State -->
@@ -197,7 +234,6 @@
                 </div>
             </div>
 
-            <!-- URL Format Examples -->
             <div class="mt-8 max-w-2xl mx-auto bg-white/5 backdrop-blur rounded-xl p-6 border border-purple-500/20 text-left">
                 <h4 class="text-white font-bold mb-4 text-center">📋 Format URL yang Didukung</h4>
                 <div class="space-y-2 text-sm font-mono">
@@ -233,25 +269,31 @@
     </div>
 </div>
 
+<!-- Scroll to Top Button -->
+<button id="scrollTopBtn" onclick="window.scrollTo({top:0,behavior:'smooth'})"
+    class="fixed bottom-8 right-8 z-50 hidden w-12 h-12 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white rounded-full shadow-lg shadow-purple-500/40 flex items-center justify-center transition-all duration-300 hover:scale-110"
+    title="Kembali ke atas">
+    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path d="M5 15l7-7 7 7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+</button>
+
 <script>
-/**
- * Detect URLs from input text.
- * 
- * Pattern yang didukung:
- * - https://domain.com/f/xxx           (folder, domain biasa)
- * - https://domain.com/d/xxx           (video, domain biasa)
- * - https://sub.domain.com/f/xxx       (folder, 1 level subdomain)
- * - https://sub.domain.com/d/xxx       (video, 1 level subdomain)
- * - https://cdn2.videy.coach/d/xxx     (video, subdomain angka)
- * - http:// juga didukung
- * 
- * Regex breakdown:
- *   https?://                          - protocol http atau https
- *   (?:[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?\.)+   - satu atau lebih label subdomain/domain (misal: cdn2. videy.)
- *   [a-zA-Z]{2,}                       - TLD (coach, com, ad, online, dll)
- *   \/[fd]\/                           - wajib ada /f/ atau /d/
- *   [a-zA-Z0-9]+                       - ID video/folder (alphanumeric)
- */
+	// Scroll to Top Button
+const scrollTopBtn = document.getElementById('scrollTopBtn');
+window.addEventListener('scroll', () => {
+    if (window.scrollY > 300) {
+        scrollTopBtn.classList.remove('hidden');
+        scrollTopBtn.classList.add('flex');
+    } else {
+        scrollTopBtn.classList.add('hidden');
+        scrollTopBtn.classList.remove('flex');
+    }
+});
+</script>
+
+
+<script>
 function detectUrls(text) {
     const urlPattern = /https?:\/\/(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}\/[fd]\/[a-zA-Z0-9]+/gi;
     const matches = text.match(urlPattern);
@@ -259,14 +301,12 @@ function detectUrls(text) {
     return [...new Set(matches)];
 }
 
-/** Tentukan tipe URL: 'folder' jika /f/, 'video' jika /d/ */
 function getUrlType(url) {
     if (/\/f\//.test(url)) return 'folder';
     if (/\/d\//.test(url)) return 'video';
     return 'unknown';
 }
 
-// Real-time URL detection while typing
 document.getElementById('urlInput').addEventListener('input', function() {
     const text = this.value;
     const urls = detectUrls(text);
@@ -280,12 +320,10 @@ document.getElementById('urlInput').addEventListener('input', function() {
     if (urls.length > 0) {
         detectedBox.classList.remove('hidden');
         detectedCount.textContent = urls.length;
-
         const folders = urls.filter(u => getUrlType(u) === 'folder').length;
         const videos  = urls.filter(u => getUrlType(u) === 'video').length;
         detectedFolderCount.textContent = folders;
         detectedVideoCount.textContent  = videos;
-        
         detectedList.innerHTML = urls.map((url, index) => {
             const type    = getUrlType(url);
             const typeClass  = type === 'video' ? 'type-video' : '';
@@ -303,28 +341,20 @@ document.getElementById('urlInput').addEventListener('input', function() {
     }
 });
 
-// Test API Connection
 document.getElementById('testApiBtn').addEventListener('click', async () => {
     try {
         const response = await fetch('/api/index.php?test=1');
         const data = await response.json();
-        
         if (data.success) {
-            alert('✅ API Connection Success!\n\n' + 
-                  'Timestamp: ' + data.timestamp + '\n' +
-                  'PHP Version: ' + data.php_version + '\n' +
-                  'cURL Available: ' + (data.curl_available ? 'Yes' : 'No'));
+            alert('✅ API Connection Success!\n\nTimestamp: ' + data.timestamp + '\nPHP Version: ' + data.php_version + '\ncURL Available: ' + (data.curl_available ? 'Yes' : 'No'));
         } else {
             alert('❌ API Test Failed');
         }
     } catch (error) {
-        alert('❌ Cannot connect to API\n\n' +
-              'Error: ' + error.message + '\n\n' +
-              'Pastikan file api/index.php ada di folder yang sama dengan index.html');
+        alert('❌ Cannot connect to API\n\nError: ' + error.message + '\n\nPastikan file api/index.php ada di folder yang sama dengan index.html');
     }
 });
 
-// Global stats tracking
 let globalStats = {
     totalFolders: 0,
     processedFolders: 0,
@@ -347,19 +377,9 @@ document.getElementById('searchForm').addEventListener('submit', async (e) => {
     const urls = detectUrls(input);
     
     if (urls.length === 0) {
-        showError(
-            '❌ Tidak ada URL yang terdeteksi!\n\n' +
-            'Pastikan URL memiliki format:\n' +
-            '- https://domain.com/f/xxxxx        (folder)\n' +
-            '- https://domain.com/d/xxxxx        (video)\n' +
-            '- https://sub.domain.com/f/xxxxx    (folder, subdomain)\n' +
-            '- https://sub.domain.com/d/xxxxx    (video, subdomain)\n\n' +
-            'Contoh: https://cdn2.videy.coach/d/9pgjmw4ivhhj'
-        );
+        showError('❌ Tidak ada URL yang terdeteksi!\n\nPastikan URL memiliki format:\n- https://domain.com/f/xxxxx        (folder)\n- https://domain.com/d/xxxxx        (video)\n- https://sub.domain.com/f/xxxxx    (folder, subdomain)\n- https://sub.domain.com/d/xxxxx    (video, subdomain)\n\nContoh: https://cdn2.videy.coach/d/9pgjmw4ivhhj');
         return;
     }
-    
-    console.log('🤖 Auto Detected URLs:', urls);
     
     globalStats = {
         totalFolders: urls.length,
@@ -394,23 +414,17 @@ document.getElementById('searchForm').addEventListener('submit', async (e) => {
 async function processUrl(url, folderNumber) {
     try {
         const apiUrl = `/api/index.php?url=${encodeURIComponent(url)}`;
-        console.log(`Processing #${folderNumber} [${getUrlType(url)}]:`, apiUrl);
-        
         const response = await fetch(apiUrl);
         
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         
         const contentType = response.headers.get('content-type');
         if (!contentType || !contentType.includes('application/json')) {
             const text = await response.text();
-            console.error('Non-JSON response:', text);
             throw new Error('Server tidak mengembalikan JSON');
         }
         
         const data = await response.json();
-        console.log(`#${folderNumber} response:`, data);
         
         if (data.success) {
             if (data.type === 'folder' && data.videos && data.videos.length > 0) {
@@ -430,7 +444,6 @@ async function processUrl(url, folderNumber) {
             displayFolderError(url, folderNumber, data.message || data.error || 'Gagal memproses URL');
         }
     } catch (error) {
-        console.error(`Error processing #${folderNumber}:`, error);
         displayFolderError(url, folderNumber, error.message);
     }
     
@@ -462,10 +475,45 @@ function displayFolderVideos(data, sourceUrl, folderNumber) {
     folderSection.className = 'space-y-4';
     
     const videos = data.videos || [];
-    const successCount = videos.filter(v => v.success).length;
+    const successVideos = videos.filter(v => v.success);
+    const successCount = successVideos.length;
     const urlType = getUrlType(sourceUrl);
     const typeIcon  = urlType === 'video' ? '🎬' : '📁';
     const typeLabel = urlType === 'video' ? 'Video' : 'Folder';
+
+    // Collect all tonton URLs for successful videos
+    const tontonUrls = successVideos
+        .map(v => v.download_url)
+        .filter(Boolean);
+
+    // Build URL list box HTML
+    let urlListBoxHtml = '';
+    if (tontonUrls.length > 0) {
+        const urlListId = `urllist-${folderNumber}`;
+        const copyBtnId = `copybtn-${folderNumber}`;
+        urlListBoxHtml = `
+            <div class="url-list-box">
+                <div class="flex items-center justify-between mb-2 flex-wrap gap-2">
+                    <div class="flex items-center gap-2">
+                        <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        <span class="text-emerald-400 font-bold text-sm">
+                            Semua URL Tonton ${typeIcon} ${typeLabel} #${folderNumber}
+                            <span class="text-emerald-600 font-normal">(${tontonUrls.length} video)</span>
+                        </span>
+                    </div>
+                    <button class="copy-btn" id="${copyBtnId}" onclick="copyUrlList('${urlListId}', '${copyBtnId}')">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        Copy Semua URL
+                    </button>
+                </div>
+                <textarea id="${urlListId}" readonly>${escapeHtml(tontonUrls.join('\n'))}</textarea>
+            </div>
+        `;
+    }
     
     folderSection.innerHTML = `
         <div class="bg-white/5 backdrop-blur-lg rounded-2xl border-2 border-purple-500/30 p-6">
@@ -490,6 +538,8 @@ function displayFolderVideos(data, sourceUrl, folderNumber) {
             
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6" id="folder-${folderNumber}-grid">
             </div>
+
+            ${urlListBoxHtml}
         </div>
     `;
     
@@ -500,6 +550,28 @@ function displayFolderVideos(data, sourceUrl, folderNumber) {
         const card = createVideoCard(video, index);
         grid.appendChild(card);
     });
+}
+
+function copyUrlList(textareaId, btnId) {
+    const textarea = document.getElementById(textareaId);
+    const btn = document.getElementById(btnId);
+    if (!textarea) return;
+    textarea.select();
+    textarea.setSelectionRange(0, 99999);
+    try {
+        navigator.clipboard.writeText(textarea.value).then(() => {
+            btn.classList.add('copied');
+            btn.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> Tersalin!`;
+            setTimeout(() => {
+                btn.classList.remove('copied');
+                btn.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> Copy Semua URL`;
+            }, 2000);
+        });
+    } catch {
+        document.execCommand('copy');
+        btn.textContent = '✅ Tersalin!';
+        setTimeout(() => { btn.textContent = 'Copy Semua URL'; }, 2000);
+    }
 }
 
 function displayFolderError(sourceUrl, folderNumber, errorMessage) {
