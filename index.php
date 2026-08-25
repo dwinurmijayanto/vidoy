@@ -1,18 +1,4 @@
 <?php
-/**
- * Frontend: VDY Scan (Bulk + Folder)
- * Memanggil API: https://vidshare.my.id/scan/api/index.php
- * Simpan file ini di: https://vidshare.my.id/scan/index.php
- *
- * Catatan: base domain pada input diabaikan — hanya kode/ID
- * (segmen terakhir path) yang diambil dan dikirim ke API sebagai ?id=.
- *
- * Endpoint tambahan di file ini sendiri:
- *   GET ?action=folder&url=<folder /f/ url>
- *   -> mengambil halaman folder via curl (server-side, bebas CORS),
- *      lalu parsing <div class="file-grid"> untuk mengambil semua
- *      link single video (/d/...) di dalamnya.
- */
 
 if (isset($_GET['action']) && $_GET['action'] === 'folder') {
     header('Content-Type: application/json; charset=utf-8');
