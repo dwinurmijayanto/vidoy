@@ -1,20 +1,4 @@
 <?php
-/**
- * API Endpoint: Get Video URL & Thumbnail
- * 
- * Cara pakai:
- *   GET /get-video-info.php?url=https://vdy.to/d/f5fn2v5mxec8
- *   atau
- *   GET /get-video-info.php?id=f5fn2v5mxec8
- *
- * Response (JSON):
- *   {
- *     "success": true,
- *     "id": "f5fn2v5mxec8",
- *     "video_url": "https://mp4-06.overfetch.video/Bl94nHPnm-EtC6LjIQh",
- *     "thumbnail_url": "https://i.vdy.to/image/Bl94nHPnm.jpg"
- *   }
- */
 
 header('Content-Type: application/json; charset=utf-8');
 
