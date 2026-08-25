@@ -1,709 +1,594 @@
+<?php
+/**
+ * Frontend: VDY Scan (Bulk + Folder)
+ * Memanggil API: https://vidshare.my.id/scan/api/index.php
+ * Simpan file ini di: https://vidshare.my.id/scan/index.php
+ *
+ * Catatan: base domain pada input diabaikan — hanya kode/ID
+ * (segmen terakhir path) yang diambil dan dikirim ke API sebagai ?id=.
+ *
+ * Endpoint tambahan di file ini sendiri:
+ *   GET ?action=folder&url=<folder /f/ url>
+ *   -> mengambil halaman folder via curl (server-side, bebas CORS),
+ *      lalu parsing <div class="file-grid"> untuk mengambil semua
+ *      link single video (/d/...) di dalamnya.
+ */
+
+if (isset($_GET['action']) && $_GET['action'] === 'folder') {
+    header('Content-Type: application/json; charset=utf-8');
+    header('Access-Control-Allow-Origin: *');
+
+    $folderUrl = trim($_GET['url'] ?? '');
+
+    if ($folderUrl === '' || !preg_match('#^https?://#i', $folderUrl)) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => 'Parameter "url" folder tidak valid.']);
+        exit;
+    }
+
+    $ch = curl_init($folderUrl);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_MAXREDIRS      => 5,
+        CURLOPT_TIMEOUT        => 15,
+        CURLOPT_USERAGENT      => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        CURLOPT_HTTPHEADER     => [
+            'Accept: text/html,application/xhtml+xml',
+        ],
+        CURLOPT_SSL_VERIFYPEER => true,
+    ]);
+    $html = curl_exec($ch);
+    $curlErr = curl_error($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if ($html === false || $curlErr) {
+        echo json_encode(['success' => false, 'message' => 'Gagal mengambil halaman folder.', 'error' => $curlErr]);
+        exit;
+    }
+    if ($httpCode >= 400) {
+        echo json_encode(['success' => false, 'message' => 'Halaman folder mengembalikan status error.', 'http_code' => $httpCode]);
+        exit;
+    }
+
+    $doc = new DOMDocument();
+    libxml_use_internal_errors(true);
+    $doc->loadHTML($html);
+    libxml_clear_errors();
+    $xpath = new DOMXPath($doc);
+
+    // Cari div dengan class "file-grid" (toleran walau ada class tambahan)
+    $gridNodes = $xpath->query("//div[contains(concat(' ', normalize-space(@class), ' '), ' file-grid ')]");
+
+    if ($gridNodes->length === 0) {
+        echo json_encode(['success' => false, 'message' => 'Elemen "file-grid" tidak ditemukan pada halaman folder.']);
+        exit;
+    }
+
+    $parts = parse_url($folderUrl);
+    $baseOrigin = ($parts['scheme'] ?? 'https') . '://' . ($parts['host'] ?? '');
+
+    $files = [];
+    foreach ($gridNodes as $grid) {
+        $links = $xpath->query('.//a[@href]', $grid);
+        foreach ($links as $a) {
+            $href = trim($a->getAttribute('href'));
+            if ($href === '' || strpos($href, '/d/') === false) {
+                continue; // hanya link single video (/d/...)
+            }
+
+            if (preg_match('#^https?://#i', $href)) {
+                $absolute = $href;
+            } else {
+                $absolute = $baseOrigin . '/' . ltrim($href, '/');
+            }
+
+            if (!in_array($absolute, $files, true)) {
+                $files[] = $absolute;
+            }
+        }
+    }
+
+    if (empty($files)) {
+        echo json_encode(['success' => false, 'message' => 'Tidak ada link video (/d/) ditemukan di dalam file-grid.']);
+        exit;
+    }
+
+    echo json_encode(['success' => true, 'files' => $files]);
+    exit;
+}
+?>
 <!DOCTYPE html>
 <html lang="id">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vidoy Downloader - Auto Detect Edition</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        .card-hover {
-            transition: all 0.3s ease;
-        }
-        .card-hover:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 20px 40px rgba(168, 85, 247, 0.4);
-        }
-        .spinner {
-            border: 4px solid rgba(255, 255, 255, 0.1);
-            border-top: 4px solid #a855f7;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 1s linear infinite;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        .progress-bar {
-            transition: width 0.3s ease;
-        }
-        .detected-url {
-            background: rgba(168, 85, 247, 0.1);
-            border-left: 3px solid #a855f7;
-            padding: 0.5rem;
-            margin: 0.25rem 0;
-            border-radius: 0.5rem;
-        }
-        .detected-url.type-video {
-            border-left-color: #3b82f6;
-            background: rgba(59, 130, 246, 0.1);
-        }
-        .url-list-box {
-            background: rgba(16, 185, 129, 0.07);
-            border: 1.5px solid rgba(16, 185, 129, 0.35);
-            border-radius: 1rem;
-            padding: 1.25rem 1.5rem;
-            margin-top: 1rem;
-        }
-        .url-list-box textarea {
-            width: 100%;
-            background: rgba(0,0,0,0.25);
-            color: #a7f3d0;
-            font-family: monospace;
-            font-size: 0.78rem;
-            border: 1px solid rgba(16,185,129,0.3);
-            border-radius: 0.5rem;
-            padding: 0.75rem;
-            resize: vertical;
-            outline: none;
-            min-height: 90px;
-        }
-        .url-list-box textarea:focus {
-            border-color: rgba(16,185,129,0.6);
-        }
-        .copy-btn {
-            background: linear-gradient(to right, #10b981, #059669);
-            color: white;
-            font-weight: 700;
-            padding: 0.45rem 1.1rem;
-            border-radius: 0.5rem;
-            border: none;
-            cursor: pointer;
-            font-size: 0.82rem;
-            transition: opacity 0.2s;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.4rem;
-        }
-        .copy-btn:hover { opacity: 0.85; }
-        .copy-btn.copied { background: linear-gradient(to right, #6366f1, #4f46e5); }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VDY Scan — Bulk Video Link Extractor</title>
+<style>
+  :root{
+    --bg: #0a0f0e;
+    --panel: #101716;
+    --panel-2: #141d1c;
+    --line: #223330;
+    --text: #e7f2ee;
+    --muted: #7a938c;
+    --accent: #48e0c2;
+    --accent-dim: #1f4a41;
+    --error: #ff6b57;
+    --ok: #48e0c2;
+    --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'JetBrains Mono', Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, sans-serif;
+  }
+  *{ box-sizing: border-box; }
+  body{
+    margin:0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height:100vh;
+    display:flex;
+    justify-content:center;
+    padding: 48px 20px 80px;
+    background-image: radial-gradient(ellipse 80% 40% at 50% -10%, rgba(72,224,194,0.08), transparent);
+  }
+  .wrap{ width:100%; max-width: 860px; }
+
+  .eyebrow{
+    font-family: var(--mono); font-size: 12px; letter-spacing: 0.18em;
+    color: var(--accent); text-transform: uppercase; margin-bottom: 10px;
+    display:flex; align-items:center; gap:8px;
+  }
+  .eyebrow .dot{
+    width:6px;height:6px;border-radius:50%; background: var(--accent);
+    box-shadow: 0 0 8px var(--accent); animation: blink 1.6s ease-in-out infinite;
+  }
+  @keyframes blink{ 0%,100%{opacity:1} 50%{opacity:.25} }
+
+  h1{ font-family: var(--mono); font-size: clamp(22px, 4vw, 30px); font-weight: 600; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .sub{ color: var(--muted); font-size: 13.5px; margin: 0 0 28px; line-height:1.55; max-width: 62ch; }
+  .sub code{ font-family: var(--mono); background: var(--panel-2); padding: 1px 6px; border-radius: 4px; font-size: 12px; color: var(--text); }
+
+  .panel{
+    position:relative;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 14px;
+    overflow:hidden;
+  }
+  .panel.scanning::before{
+    content:""; position:absolute; left:0; right:0; top:0; height:2px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    animation: sweep 1.3s linear infinite;
+    box-shadow: 0 0 12px var(--accent);
+  }
+  @keyframes sweep{ 0%{ transform: translateY(-4px); } 100%{ transform: translateY(140px); } }
+
+  textarea{
+    width:100%;
+    min-height: 140px;
+    resize: vertical;
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.6;
+    padding: 12px 14px;
+    border-radius: 7px;
+    outline:none;
+    transition: border-color .15s;
+  }
+  textarea::placeholder{ color: #4a615c; }
+  textarea:focus{ border-color: var(--accent); }
+
+  .panel-footer{
+    display:flex;
+    align-items:center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 10px;
+    flex-wrap: wrap;
+  }
+  .hint{ font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .count-badge{ font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .count-badge b{ color: var(--accent); }
+
+  button{
+    font-family: var(--mono);
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    border: none;
+    border-radius: 7px;
+    cursor: pointer;
+    transition: filter .15s, transform .1s;
+  }
+  button:active{ transform: scale(0.98); }
+  button:disabled{ opacity:.5; cursor: progress; }
+  button:focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  button.go{
+    background: var(--accent);
+    color: #04211b;
+    font-size: 13px;
+    padding: 11px 24px;
+    white-space: nowrap;
+  }
+  button.go:hover{ filter: brightness(1.08); }
+
+  button.ghost{
+    background: transparent;
+    border: 1px solid var(--line);
+    color: var(--text);
+    font-size: 11.5px;
+    padding: 9px 16px;
+  }
+  button.ghost:hover{ border-color: var(--accent); color: var(--accent); }
+
+  .status{ margin-top: 16px; font-family: var(--mono); font-size: 12.5px; color: var(--muted); display:none; }
+  .status.show{ display:block; }
+  .status .barwrap{ height:3px; background: var(--panel-2); border-radius: 2px; margin-top:8px; overflow:hidden; }
+  .status .bar{ height:100%; background: var(--accent); width:0%; transition: width .2s ease; }
+
+  .results-head{
+    margin-top: 28px;
+    display:none;
+    align-items:center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .results-head.show{ display:flex; }
+  .results-head .title{
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .results-head .stats{ font-family: var(--mono); font-size: 11px; color: var(--muted); }
+
+  .results{ margin-top: 12px; display:flex; flex-direction: column; gap: 8px; }
+
+  .row{
+    display:grid;
+    grid-template-columns: 56px 1fr auto;
+    align-items:center;
+    gap: 12px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 8px 10px;
+  }
+  .row.err{ border-color: rgba(255,107,87,0.35); background: rgba(255,107,87,0.04); }
+
+  .row .thumb{
+    width:56px; height:36px;
+    border-radius: 5px;
+    overflow:hidden;
+    background: var(--panel-2);
+    display:flex; align-items:center; justify-content:center;
+    flex-shrink:0;
+  }
+  .row .thumb img{ width:100%; height:100%; object-fit:cover; display:block; }
+  .row .thumb .dash{ color: var(--muted); font-size: 14px; font-family: var(--mono); }
+
+  .row .info{ min-width:0; display:flex; flex-direction: column; gap: 2px; }
+  .row .info .code{ font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+  .row .info .url{
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .row.err .info .url{ color: var(--error); }
+
+  .row .actions{ display:flex; gap:6px; flex-shrink:0; }
+  .copy-btn{
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 7px 12px;
+    border-radius: 6px;
+  }
+  .copy-btn:hover{ background: var(--accent-dim); color: var(--accent); }
+  .copy-btn.copied{ background: var(--accent); color: #04211b; border-color: var(--accent); }
+
+  footer{ margin-top: 40px; font-family: var(--mono); font-size: 11px; color: #3d534d; text-align:center; }
+
+  @media (max-width: 560px){
+    .row{ grid-template-columns: 44px 1fr; }
+    .row .actions{ grid-column: 1 / -1; justify-content: flex-end; }
+    .row .thumb{ width:44px; height:30px; }
+  }
+</style>
 </head>
 <body>
 
-<div class="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-6">
-    <div class="max-w-7xl mx-auto">
-        
-        <!-- Header -->
-        <div class="text-center mb-12">
-            <div class="flex items-center justify-center gap-4 mb-4">
-                <svg class="w-16 h-16 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-                <h1 class="text-5xl font-bold text-white">Vidoy Downloader</h1>
-            </div>
-            <p class="text-gray-300 text-lg">Download semua video dari Vidoy dengan mudah</p>
-            <p class="text-purple-400 text-sm font-semibold mt-2">🤖 Auto Detect Edition - Smart URL Extraction</p>
-        </div>
+<div class="wrap">
+  <div class="eyebrow"><span class="dot"></span>vidshare / scan / bulk</div>
+  <h1>Bulk Video Link Extractor</h1>
+  <p class="sub">Tempel banyak URL sekaligus, satu per baris — dari domain apa pun. Hanya baris berupa URL (http/https) yang diproses; domain diabaikan dan hanya kode terakhir pada path yang diambil. Link folder <code>/f/</code> otomatis dibuka dan semua file di dalamnya (<code>/d/...</code>) ikut diproses; link single <code>/d/</code> atau <code>/e/</code> diproses langsung.</p>
 
-        <!-- Search Form -->
-        <div class="mb-10 max-w-5xl mx-auto">
-            <form id="searchForm" class="space-y-4">
-                <div class="relative">
-                    <textarea
-                        id="urlInput"
-                        placeholder="Paste teks atau daftar URL di sini... Auto detect akan menemukan semua URL!&#10;&#10;Support SEMUA domain & subdomain dengan pattern /f/ atau /d/&#10;&#10;Contoh:&#10;📁 Folder biasa&#10;https://upl.ad/f/1orrot80hs0&#10;&#10;🎬 Video langsung (subdomain)&#10;https://cdn2.videy.coach/d/9pgjmw4ivhhj&#10;&#10;📁 Folder subdomain&#10;https://cdn2.videy.coach/f/abc123&#10;&#10;Paste teks apapun, sistem akan otomatis menemukan semua URL!"
-                        class="w-full px-6 py-5 pr-6 rounded-2xl bg-white/10 backdrop-blur-lg border-2 border-purple-500/30 text-white text-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all resize-none"
-                        rows="8"
-                        required
-                    ></textarea>
-                </div>
-                
-                <!-- Detected URLs Preview -->
-                <div id="detectedUrlsBox" class="hidden bg-white/5 backdrop-blur-lg rounded-2xl border-2 border-green-500/30 p-6">
-                    <div class="flex items-center gap-4 mb-3 flex-wrap">
-                        <div class="flex items-center gap-2">
-                            <svg class="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" stroke-width="2"/>
-                            </svg>
-                            <h3 class="text-green-400 font-bold">
-                                <span id="detectedCount">0</span> URL Terdeteksi
-                            </h3>
-                        </div>
-                        <div class="flex gap-3 text-xs">
-                            <span class="bg-purple-500/30 text-purple-300 px-2 py-1 rounded-full">
-                                📁 Folder: <span id="detectedFolderCount">0</span>
-                            </span>
-                            <span class="bg-blue-500/30 text-blue-300 px-2 py-1 rounded-full">
-                                🎬 Video: <span id="detectedVideoCount">0</span>
-                            </span>
-                        </div>
-                    </div>
-                    <div id="detectedUrlsList" class="space-y-1 max-h-48 overflow-y-auto text-sm">
-                    </div>
-                </div>
-                
-                <button
-                    type="submit"
-                    id="searchBtn"
-                    class="w-full px-8 py-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                    <svg id="searchIcon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path d="M13 10V3L4 14h7v7l9-11h-7z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
-                    <div id="loadingSpinner" class="spinner hidden"></div>
-                    <span id="searchText">Auto Detect & Process</span>
-                </button>
-            </form>
-            <p class="text-gray-400 text-sm mt-3 text-center">
-                🤖 <strong class="text-purple-400">Smart Auto Detect</strong> - Support semua domain, subdomain, /f/ (folder) & /d/ (video)
-            </p>
-            <div class="text-center mt-2">
-                <button id="testApiBtn" class="text-gray-500 hover:text-purple-400 text-xs underline">
-                    Test API Connection
-                </button>
-            </div>
-        </div>
-
-        <!-- Progress Info -->
-        <div id="progressInfo" class="max-w-5xl mx-auto mb-8 hidden">
-            <div class="bg-white/5 backdrop-blur-lg rounded-2xl border-2 border-purple-500/30 p-6">
-                <div class="mb-4">
-                    <div class="flex justify-between text-sm text-gray-300 mb-2">
-                        <span>Processing URLs...</span>
-                        <span id="progressText">0 / 0</span>
-                    </div>
-                    <div class="w-full bg-gray-700 rounded-full h-3 overflow-hidden">
-                        <div id="progressBar" class="progress-bar bg-gradient-to-r from-purple-500 to-pink-500 h-3 rounded-full" style="width: 0%"></div>
-                    </div>
-                </div>
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-                    <div>
-                        <div class="text-gray-400 text-sm mb-1">Total URLs</div>
-                        <div class="text-purple-400 text-2xl font-bold" id="totalFolders">0</div>
-                    </div>
-                    <div>
-                        <div class="text-gray-400 text-sm mb-1">Total Videos</div>
-                        <div class="text-blue-400 text-2xl font-bold" id="totalVideos">0</div>
-                    </div>
-                    <div>
-                        <div class="text-gray-400 text-sm mb-1">Success</div>
-                        <div class="text-green-400 text-2xl font-bold" id="successCount">0</div>
-                    </div>
-                    <div>
-                        <div class="text-gray-400 text-sm mb-1">Failed</div>
-                        <div class="text-red-400 text-2xl font-bold" id="failedCount">0</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Error Message -->
-        <div id="errorMessage" class="max-w-5xl mx-auto mb-8 hidden">
-            <div class="bg-red-500/20 border-2 border-red-500/50 rounded-2xl px-6 py-4 text-red-200 backdrop-blur-lg">
-                <div class="flex items-center gap-3">
-                    <svg class="w-6 h-6 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <circle cx="12" cy="12" r="10" stroke-width="2"/>
-                        <line x1="12" y1="8" x2="12" y2="12" stroke-width="2"/>
-                        <line x1="12" y1="16" x2="12.01" y2="16" stroke-width="2"/>
-                    </svg>
-                    <span id="errorText"></span>
-                </div>
-            </div>
-        </div>
-
-        <!-- Videos Container -->
-        <div id="videosContainer" class="hidden space-y-8">
-        </div>
-
-        <!-- Empty State -->
-        <div id="emptyState" class="text-center py-20">
-            <svg class="w-32 h-32 text-gray-600 mx-auto mb-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            <h3 class="text-gray-300 text-2xl font-bold mb-3">Siap untuk download?</h3>
-            <p class="text-gray-400 text-lg mb-2">Paste teks atau URL di atas untuk memulai</p>
-            <p class="text-gray-500 text-sm">Support semua domain, subdomain, /f/ (folder) & /d/ (video langsung)</p>
-            
-            <div class="mt-12 max-w-3xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div class="bg-white/5 backdrop-blur rounded-xl p-6 border border-purple-500/20">
-                    <div class="text-4xl mb-3">🤖</div>
-                    <h4 class="text-white font-bold mb-2">Auto Detect</h4>
-                    <p class="text-gray-400 text-sm">Otomatis ekstrak semua URL dari teks apapun</p>
-                </div>
-                <div class="bg-white/5 backdrop-blur rounded-xl p-6 border border-purple-500/20">
-                    <div class="text-4xl mb-3">📦</div>
-                    <h4 class="text-white font-bold mb-2">Subdomain Support</h4>
-                    <p class="text-gray-400 text-sm">cdn2.videy.coach, upl.ad, vid7.online & semua domain lainnya</p>
-                </div>
-                <div class="bg-white/5 backdrop-blur rounded-xl p-6 border border-purple-500/20">
-                    <div class="text-4xl mb-3">⚡</div>
-                    <h4 class="text-white font-bold mb-2">/f/ & /d/ Support</h4>
-                    <p class="text-gray-400 text-sm">/f/ untuk folder, /d/ untuk video langsung</p>
-                </div>
-            </div>
-
-            <div class="mt-8 max-w-2xl mx-auto bg-white/5 backdrop-blur rounded-xl p-6 border border-purple-500/20 text-left">
-                <h4 class="text-white font-bold mb-4 text-center">📋 Format URL yang Didukung</h4>
-                <div class="space-y-2 text-sm font-mono">
-                    <div class="flex items-center gap-3">
-                        <span class="bg-purple-500/30 text-purple-300 px-2 py-0.5 rounded text-xs flex-shrink-0">📁 Folder</span>
-                        <span class="text-gray-300">https://upl.ad/f/abc123</span>
-                    </div>
-                    <div class="flex items-center gap-3">
-                        <span class="bg-purple-500/30 text-purple-300 px-2 py-0.5 rounded text-xs flex-shrink-0">📁 Folder</span>
-                        <span class="text-gray-300">https://vid7.online/f/xyz789</span>
-                    </div>
-                    <div class="flex items-center gap-3">
-                        <span class="bg-blue-500/30 text-blue-300 px-2 py-0.5 rounded text-xs flex-shrink-0">🎬 Video</span>
-                        <span class="text-gray-300">https://cdn2.videy.coach/d/9pgjmw4ivhhj</span>
-                    </div>
-                    <div class="flex items-center gap-3">
-                        <span class="bg-blue-500/30 text-blue-300 px-2 py-0.5 rounded text-xs flex-shrink-0">🎬 Video</span>
-                        <span class="text-gray-300">https://sub.domain.com/d/videoid</span>
-                    </div>
-                    <div class="flex items-center gap-3">
-                        <span class="bg-purple-500/30 text-purple-300 px-2 py-0.5 rounded text-xs flex-shrink-0">📁 Folder</span>
-                        <span class="text-gray-300">https://sub.domain.com/f/folderid</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Footer -->
-        <div class="text-center mt-16 pb-8">
-            <p class="text-gray-500 text-sm">Made with ❤️ using Vidoy API</p>
-        </div>
-
+  <div class="panel" id="panel">
+    <textarea id="input-bulk" placeholder="https://vdy.to/d/f5fn2v5mxec8&#10;https://vdy.to/f/mxicxvexlcj&#10;https://cdn.mp4ko.de/e/mqptlh3tw1jv&#10;..."></textarea>
+    <div class="panel-footer">
+      <span class="count-badge" id="count-badge"><b>0</b> baris terdeteksi</span>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <button class="ghost" id="btn-clear" type="button">Bersihkan</button>
+        <button class="go" id="btn-scan" type="button">Scan Semua</button>
+      </div>
     </div>
+  </div>
+
+  <div class="status" id="status">
+    <div id="status-text">Memindai 0 / 0…</div>
+    <div class="barwrap"><div class="bar" id="status-bar"></div></div>
+  </div>
+
+  <div class="results-head" id="results-head">
+    <span class="title">Hasil</span>
+    <div style="display:flex; align-items:center; gap:12px;">
+      <span class="stats" id="results-stats"></span>
+      <button class="ghost" id="btn-copy-all" type="button">Copy Semua Video URL</button>
+    </div>
+  </div>
+
+  <div class="results" id="results"></div>
+
+  <footer>vidshare.my.id/scan &middot; powered by get-video-info API</footer>
 </div>
 
-<!-- Scroll to Top Button -->
-<button id="scrollTopBtn" onclick="window.scrollTo({top:0,behavior:'smooth'})"
-    class="fixed bottom-8 right-8 z-50 hidden w-12 h-12 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white rounded-full shadow-lg shadow-purple-500/40 flex items-center justify-center transition-all duration-300 hover:scale-110"
-    title="Kembali ke atas">
-    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path d="M5 15l7-7 7 7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-    </svg>
-</button>
-
 <script>
-	// Scroll to Top Button
-const scrollTopBtn = document.getElementById('scrollTopBtn');
-window.addEventListener('scroll', () => {
-    if (window.scrollY > 300) {
-        scrollTopBtn.classList.remove('hidden');
-        scrollTopBtn.classList.add('flex');
-    } else {
-        scrollTopBtn.classList.add('hidden');
-        scrollTopBtn.classList.remove('flex');
-    }
-});
-</script>
+const API_ENDPOINT = 'https://vidshare.my.id/scan/api/index.php';
+const FOLDER_ENDPOINT = '?action=folder';
 
+const $textarea   = document.getElementById('input-bulk');
+const $countBadge = document.getElementById('count-badge');
+const $btnScan    = document.getElementById('btn-scan');
+const $btnClear   = document.getElementById('btn-clear');
+const $panel      = document.getElementById('panel');
+const $status     = document.getElementById('status');
+const $statusText = document.getElementById('status-text');
+const $statusBar  = document.getElementById('status-bar');
+const $resultsHead= document.getElementById('results-head');
+const $resultsStats = document.getElementById('results-stats');
+const $results    = document.getElementById('results');
+const $btnCopyAll = document.getElementById('btn-copy-all');
 
-<script>
-function detectUrls(text) {
-    const urlPattern = /https?:\/\/(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}\/[fd]\/[a-zA-Z0-9]+/gi;
-    const matches = text.match(urlPattern);
-    if (!matches) return [];
-    return [...new Set(matches)];
+function getLines(){
+  return $textarea.value
+    .split('\n')
+    .map(l => l.trim())
+    .filter(Boolean);
 }
 
-function getUrlType(url) {
-    if (/\/f\//.test(url)) return 'folder';
-    if (/\/d\//.test(url)) return 'video';
-    return 'unknown';
+function updateCount(){
+  const n = getLines().length;
+  $countBadge.innerHTML = `<b>${n}</b> baris terdeteksi`;
 }
+$textarea.addEventListener('input', updateCount);
+updateCount();
 
-document.getElementById('urlInput').addEventListener('input', function() {
-    const text = this.value;
-    const urls = detectUrls(text);
-    
-    const detectedBox = document.getElementById('detectedUrlsBox');
-    const detectedCount = document.getElementById('detectedCount');
-    const detectedFolderCount = document.getElementById('detectedFolderCount');
-    const detectedVideoCount = document.getElementById('detectedVideoCount');
-    const detectedList = document.getElementById('detectedUrlsList');
-    
-    if (urls.length > 0) {
-        detectedBox.classList.remove('hidden');
-        detectedCount.textContent = urls.length;
-        const folders = urls.filter(u => getUrlType(u) === 'folder').length;
-        const videos  = urls.filter(u => getUrlType(u) === 'video').length;
-        detectedFolderCount.textContent = folders;
-        detectedVideoCount.textContent  = videos;
-        detectedList.innerHTML = urls.map((url, index) => {
-            const type    = getUrlType(url);
-            const typeClass  = type === 'video' ? 'type-video' : '';
-            const typeLabel  = type === 'folder' ? '📁 Folder' : '🎬 Video';
-            const labelClass = type === 'folder' ? 'text-purple-400' : 'text-blue-400';
-            return `
-                <div class="detected-url ${typeClass} text-gray-300 font-mono text-xs flex items-center gap-2">
-                    <span class="${labelClass} font-bold flex-shrink-0">#${index + 1} ${typeLabel}</span>
-                    <span class="truncate">${escapeHtml(url)}</span>
-                </div>
-            `;
-        }).join('');
-    } else {
-        detectedBox.classList.add('hidden');
-    }
+$btnClear.addEventListener('click', () => {
+  $textarea.value = '';
+  updateCount();
+  $results.innerHTML = '';
+  $resultsHead.classList.remove('show');
+  $status.classList.remove('show');
 });
 
-document.getElementById('testApiBtn').addEventListener('click', async () => {
-    try {
-        const response = await fetch('/api/index.php?test=1');
-        const data = await response.json();
-        if (data.success) {
-            alert('✅ API Connection Success!\n\nTimestamp: ' + data.timestamp + '\nPHP Version: ' + data.php_version + '\ncURL Available: ' + (data.curl_available ? 'Yes' : 'No'));
-        } else {
-            alert('❌ API Test Failed');
-        }
-    } catch (error) {
-        alert('❌ Cannot connect to API\n\nError: ' + error.message + '\n\nPastikan file api/index.php ada di folder yang sama dengan index.html');
-    }
-});
+// Hanya proses baris berupa URL (http/https) — teks/ID polos ditolak di sini,
+// karena kalau langsung dikirim sebagai id ke API sering muncul
+// "ID video tidak dapat dikenali dari input yang diberikan" (mis. ID mengandung
+// karakter seperti "-" yang tidak lolos validasi ID polos di API).
+// Dari URL, kode diambil dari segmen terakhir path, domain diabaikan.
+function extractCode(raw){
+  let value = raw.trim();
+  if (!value) return null;
+  if (!/^https?:\/\//i.test(value)) return null; // bukan URL -> tolak
 
-let globalStats = {
-    totalFolders: 0,
-    processedFolders: 0,
-    totalVideos: 0,
-    successVideos: 0,
-    failedVideos: 0
-};
+  try{
+    const u = new URL(value);
+    const segments = u.pathname.replace(/\/+$/, '').split('/').filter(Boolean);
+    let code = segments.length ? segments[segments.length - 1] : '';
+    if (!code){
+      const qid = u.searchParams.get('id');
+      if (qid) code = qid;
+    }
+    code = code.split('?')[0].split('#')[0].trim();
+    return code || null;
+  } catch(e){
+    return null;
+  }
+}
 
-document.getElementById('searchForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    
-    const urlInput = document.getElementById('urlInput');
-    const input = urlInput.value.trim();
-    
-    if (!input) {
-        showError('Silakan masukkan teks atau URL');
-        return;
+function isFolderUrl(url){
+  try{
+    const u = new URL(url);
+    return /\/f\//.test(u.pathname);
+  } catch(e){
+    return false;
+  }
+}
+
+async function fetchFolderFiles(folderUrl){
+  try{
+    const res = await fetch(`${FOLDER_ENDPOINT}&url=${encodeURIComponent(folderUrl)}`);
+    const data = await res.json();
+    if (res.ok && data.success && Array.isArray(data.files) && data.files.length){
+      return { files: data.files };
     }
-    
-    const urls = detectUrls(input);
-    
-    if (urls.length === 0) {
-        showError('❌ Tidak ada URL yang terdeteksi!\n\nPastikan URL memiliki format:\n- https://domain.com/f/xxxxx        (folder)\n- https://domain.com/d/xxxxx        (video)\n- https://sub.domain.com/f/xxxxx    (folder, subdomain)\n- https://sub.domain.com/d/xxxxx    (video, subdomain)\n\nContoh: https://cdn2.videy.coach/d/9pgjmw4ivhhj');
-        return;
-    }
-    
-    globalStats = {
-        totalFolders: urls.length,
-        processedFolders: 0,
-        totalVideos: 0,
-        successVideos: 0,
-        failedVideos: 0
-    };
-    
-    setLoading(true);
-    hideAll();
-    showProgress();
-    updateProgress();
-    
-    document.getElementById('videosContainer').innerHTML = '';
-    
-    for (let i = 0; i < urls.length; i++) {
-        await processUrl(urls[i], i + 1);
-        globalStats.processedFolders++;
-        updateProgress();
-    }
-    
-    setLoading(false);
-    
-    if (globalStats.totalVideos > 0) {
-        document.getElementById('videosContainer').classList.remove('hidden');
+    return { error: (data && data.message) || 'Gagal membaca isi folder.' };
+  } catch(e){
+    return { error: 'Gagal menghubungi endpoint folder.' };
+  }
+}
+
+function rowTemplate(original, code){
+  const row = document.createElement('div');
+  row.className = 'row';
+  row.innerHTML = `
+    <div class="thumb"><span class="dash">···</span></div>
+    <div class="info">
+      <div class="code">${code || '(tidak terbaca)'}</div>
+      <div class="url">Menunggu…</div>
+    </div>
+    <div class="actions">
+      <button class="copy-btn" disabled>Copy</button>
+    </div>
+  `;
+  return row;
+}
+
+function setRowSuccess(row, data){
+  row.classList.remove('err');
+  const thumbEl = row.querySelector('.thumb');
+  const urlEl = row.querySelector('.url');
+  const copyBtn = row.querySelector('.copy-btn');
+
+  thumbEl.innerHTML = data.thumbnail_url
+    ? `<img src="${data.thumbnail_url}" alt="${data.id}">`
+    : '<span class="dash">—</span>';
+
+  urlEl.textContent = data.video_url;
+  urlEl.title = data.video_url;
+
+  copyBtn.disabled = false;
+  copyBtn.addEventListener('click', () => copyText(data.video_url, copyBtn));
+}
+
+function setRowError(row, message){
+  row.classList.add('err');
+  row.querySelector('.thumb').innerHTML = '<span class="dash">!</span>';
+  const urlEl = row.querySelector('.url');
+  urlEl.textContent = message;
+  urlEl.title = message;
+}
+
+async function copyText(text, btn){
+  if (!text) return;
+  try{
+    await navigator.clipboard.writeText(text);
+  } catch(e){
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+  }
+  if (btn){
+    const original = btn.textContent;
+    btn.textContent = 'Copied';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = original; btn.classList.remove('copied'); }, 1100);
+  }
+}
+
+async function scanAll(){
+  // Hanya baris berupa URL (http/https) yang diproses.
+  const lines = getLines().filter(l => /^https?:\/\//i.test(l));
+  if (!lines.length) return;
+
+  $btnScan.disabled = true;
+  $panel.classList.add('scanning');
+  $status.classList.add('show');
+  $resultsHead.classList.remove('show');
+  $results.innerHTML = '';
+  $btnCopyAll.onclick = null;
+
+  // --- Tahap 1: expand link folder (/f/) jadi daftar link single (/d/...) ---
+  $statusText.textContent = 'Membuka folder…';
+  $statusBar.style.width = '0%';
+
+  const expanded = []; // { url } untuk yang siap diproses, atau { sourceLine, error } untuk folder gagal
+  for (const line of lines){
+    if (isFolderUrl(line)){
+      const result = await fetchFolderFiles(line);
+      if (result.error){
+        expanded.push({ sourceLine: line, error: result.error });
+      } else {
+        result.files.forEach(fileUrl => expanded.push({ url: fileUrl }));
+      }
     } else {
-        showError('Tidak ada video yang berhasil diambil dari semua URL');
+      expanded.push({ url: line });
     }
-});
+  }
 
-async function processUrl(url, folderNumber) {
-    try {
-        const apiUrl = `/api/index.php?url=${encodeURIComponent(url)}`;
-        const response = await fetch(apiUrl);
-        
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        
-        const contentType = response.headers.get('content-type');
-        if (!contentType || !contentType.includes('application/json')) {
-            const text = await response.text();
-            throw new Error('Server tidak mengembalikan JSON');
-        }
-        
-        const data = await response.json();
-        
-        if (data.success) {
-            if (data.type === 'folder' && data.videos && data.videos.length > 0) {
-                displayFolderVideos(data, url, folderNumber);
-                globalStats.totalVideos += data.videos.length;
-                globalStats.successVideos += data.success_count || data.videos.filter(v => v.success).length;
-                globalStats.failedVideos += (data.videos.length - (data.success_count || data.videos.filter(v => v.success).length));
-            } else if (data.data && data.data.download_url) {
-                const videoData = convertSingleToFolder(data);
-                displayFolderVideos(videoData, url, folderNumber);
-                globalStats.totalVideos += 1;
-                globalStats.successVideos += 1;
-            } else {
-                displayFolderError(url, folderNumber, 'Tidak ada video ditemukan');
-            }
-        } else {
-            displayFolderError(url, folderNumber, data.message || data.error || 'Gagal memproses URL');
-        }
-    } catch (error) {
-        displayFolderError(url, folderNumber, error.message);
+  // Tampilkan dulu folder yang gagal dibuka sebagai row error.
+  expanded.filter(e => e.error).forEach(e => {
+    const row = rowTemplate(e.sourceLine, null);
+    $results.appendChild(row);
+    setRowError(row, e.error);
+  });
+
+  // Baris/URL hasil expand yang bukan URL video yang valid tidak ditampilkan sama sekali.
+  const entries = expanded
+    .filter(e => !e.error)
+    .map(e => ({ original: e.url, code: extractCode(e.url) }))
+    .filter(entry => entry.code);
+
+  const rows = [];
+  entries.forEach(entry => {
+    const row = rowTemplate(entry.original, entry.code);
+    $results.appendChild(row);
+    rows.push(row);
+  });
+
+  if (!entries.length){
+    $status.classList.remove('show');
+    $panel.classList.remove('scanning');
+    $btnScan.disabled = false;
+    if (expanded.some(e => e.error)){
+      $resultsHead.classList.add('show');
+      $resultsStats.textContent = `0 berhasil / 0 file video ditemukan`;
     }
-    
-    updateProgress();
-}
+    return;
+  }
 
-function convertSingleToFolder(data) {
-    return {
-        success: true,
-        type: 'single',
-        total_videos: 1,
-        processed: 1,
-        success_count: 1,
-        videos: [{
-            success: true,
-            video_id: data.data.video_id,
-            title: data.data.title,
-            download_url: data.data.download_url,
-            thumbnail: data.data.thumbnail,
-            embed_url: data.data.embed_url
-        }]
-    };
-}
+  // --- Tahap 2: proses tiap single video seperti alur sebelumnya ---
+  const successUrls = [];
+  let done = 0;
 
-function displayFolderVideos(data, sourceUrl, folderNumber) {
-    const container = document.getElementById('videosContainer');
-    
-    const folderSection = document.createElement('div');
-    folderSection.className = 'space-y-4';
-    
-    const videos = data.videos || [];
-    const successVideos = videos.filter(v => v.success);
-    const successCount = successVideos.length;
-    const urlType = getUrlType(sourceUrl);
-    const typeIcon  = urlType === 'video' ? '🎬' : '📁';
-    const typeLabel = urlType === 'video' ? 'Video' : 'Folder';
+  for (let i = 0; i < entries.length; i++){
+    const { code } = entries[i];
+    const row = rows[i];
 
-    // Collect all tonton URLs for successful videos
-    const tontonUrls = successVideos
-        .map(v => v.download_url)
-        .filter(Boolean);
-
-    // Build URL list box HTML
-    let urlListBoxHtml = '';
-    if (tontonUrls.length > 0) {
-        const urlListId = `urllist-${folderNumber}`;
-        const copyBtnId = `copybtn-${folderNumber}`;
-        urlListBoxHtml = `
-            <div class="url-list-box">
-                <div class="flex items-center justify-between mb-2 flex-wrap gap-2">
-                    <div class="flex items-center gap-2">
-                        <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
-                        <span class="text-emerald-400 font-bold text-sm">
-                            Semua URL Tonton ${typeIcon} ${typeLabel} #${folderNumber}
-                            <span class="text-emerald-600 font-normal">(${tontonUrls.length} video)</span>
-                        </span>
-                    </div>
-                    <button class="copy-btn" id="${copyBtnId}" onclick="copyUrlList('${urlListId}', '${copyBtnId}')">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
-                        Copy Semua URL
-                    </button>
-                </div>
-                <textarea id="${urlListId}" readonly>${escapeHtml(tontonUrls.join('\n'))}</textarea>
-            </div>
-        `;
+    try{
+      const res = await fetch(`${API_ENDPOINT}?id=${encodeURIComponent(code)}`);
+      const data = await res.json();
+      if (res.ok && data.success){
+        setRowSuccess(row, data);
+        successUrls.push(data.video_url);
+      } else {
+        setRowError(row, data.message || 'Gagal mengambil data.');
+      }
+    } catch(e){
+      setRowError(row, 'Gagal menghubungi API.');
     }
-    
-    folderSection.innerHTML = `
-        <div class="bg-white/5 backdrop-blur-lg rounded-2xl border-2 border-purple-500/30 p-6">
-            <div class="flex flex-wrap items-center justify-between gap-4 mb-4">
-                <div>
-                    <h2 class="text-2xl font-bold text-white mb-1">
-                        ${typeIcon} ${typeLabel} #${folderNumber}
-                    </h2>
-                    <p class="text-gray-400 text-sm break-all">${escapeHtml(sourceUrl)}</p>
-                </div>
-                <div class="flex gap-4 text-sm">
-                    <div class="text-center">
-                        <div class="text-gray-400 mb-1">Videos</div>
-                        <div class="text-purple-400 font-bold text-xl">${videos.length}</div>
-                    </div>
-                    <div class="text-center">
-                        <div class="text-gray-400 mb-1">Success</div>
-                        <div class="text-green-400 font-bold text-xl">${successCount}</div>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6" id="folder-${folderNumber}-grid">
-            </div>
 
-            ${urlListBoxHtml}
-        </div>
-    `;
-    
-    container.appendChild(folderSection);
-    
-    const grid = folderSection.querySelector(`#folder-${folderNumber}-grid`);
-    videos.forEach((video, index) => {
-        const card = createVideoCard(video, index);
-        grid.appendChild(card);
-    });
+    done++;
+    $statusText.textContent = `Memindai ${done} / ${entries.length}…`;
+    $statusBar.style.width = `${Math.round((done / entries.length) * 100)}%`;
+  }
+
+  $status.classList.remove('show');
+  $panel.classList.remove('scanning');
+  $btnScan.disabled = false;
+
+  $resultsHead.classList.add('show');
+  $resultsStats.textContent = `${successUrls.length} berhasil / ${entries.length - successUrls.length} gagal dari ${entries.length} video`;
+  $btnCopyAll.onclick = () => copyText(successUrls.join('\n'), $btnCopyAll);
 }
 
-function copyUrlList(textareaId, btnId) {
-    const textarea = document.getElementById(textareaId);
-    const btn = document.getElementById(btnId);
-    if (!textarea) return;
-    textarea.select();
-    textarea.setSelectionRange(0, 99999);
-    try {
-        navigator.clipboard.writeText(textarea.value).then(() => {
-            btn.classList.add('copied');
-            btn.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> Tersalin!`;
-            setTimeout(() => {
-                btn.classList.remove('copied');
-                btn.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> Copy Semua URL`;
-            }, 2000);
-        });
-    } catch {
-        document.execCommand('copy');
-        btn.textContent = '✅ Tersalin!';
-        setTimeout(() => { btn.textContent = 'Copy Semua URL'; }, 2000);
-    }
-}
-
-function displayFolderError(sourceUrl, folderNumber, errorMessage) {
-    const container = document.getElementById('videosContainer');
-    const urlType  = getUrlType(sourceUrl);
-    const typeIcon = urlType === 'video' ? '🎬' : '📁';
-    const typeLabel = urlType === 'video' ? 'Video' : 'Folder';
-    
-    const folderSection = document.createElement('div');
-    folderSection.className = 'space-y-4';
-    
-    folderSection.innerHTML = `
-        <div class="bg-red-500/10 backdrop-blur-lg rounded-2xl border-2 border-red-500/30 p-6">
-            <div class="flex items-start gap-4">
-                <svg class="w-8 h-8 text-red-400 flex-shrink-0 mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <circle cx="12" cy="12" r="10" stroke-width="2"/>
-                    <line x1="12" y1="8" x2="12" y2="12" stroke-width="2"/>
-                    <line x1="12" y1="16" x2="12.01" y2="16" stroke-width="2"/>
-                </svg>
-                <div class="flex-1">
-                    <h2 class="text-xl font-bold text-red-300 mb-2">
-                        ❌ ${typeIcon} ${typeLabel} #${folderNumber} - Error
-                    </h2>
-                    <p class="text-gray-400 text-sm break-all mb-2">${escapeHtml(sourceUrl)}</p>
-                    <p class="text-red-200">${escapeHtml(errorMessage)}</p>
-                </div>
-            </div>
-        </div>
-    `;
-    
-    container.appendChild(folderSection);
-    globalStats.failedVideos++;
-}
-
-function updateProgress() {
-    document.getElementById('totalFolders').textContent = globalStats.totalFolders;
-    document.getElementById('totalVideos').textContent  = globalStats.totalVideos;
-    document.getElementById('successCount').textContent = globalStats.successVideos;
-    document.getElementById('failedCount').textContent  = globalStats.failedVideos;
-    
-    const progressPercent = globalStats.totalFolders > 0 
-        ? (globalStats.processedFolders / globalStats.totalFolders) * 100 
-        : 0;
-    
-    document.getElementById('progressBar').style.width = progressPercent + '%';
-    document.getElementById('progressText').textContent = 
-        `${globalStats.processedFolders} / ${globalStats.totalFolders}`;
-}
-
-function showProgress() {
-    document.getElementById('progressInfo').classList.remove('hidden');
-}
-
-function setLoading(loading) {
-    const searchBtn     = document.getElementById('searchBtn');
-    const searchIcon    = document.getElementById('searchIcon');
-    const loadingSpinner = document.getElementById('loadingSpinner');
-    const searchText    = document.getElementById('searchText');
-    
-    if (loading) {
-        searchBtn.disabled = true;
-        searchIcon.classList.add('hidden');
-        loadingSpinner.classList.remove('hidden');
-        searchText.textContent = 'Processing...';
-    } else {
-        searchBtn.disabled = false;
-        searchIcon.classList.remove('hidden');
-        loadingSpinner.classList.add('hidden');
-        searchText.textContent = 'Auto Detect & Process';
-    }
-}
-
-function hideAll() {
-    document.getElementById('errorMessage').classList.add('hidden');
-    document.getElementById('videosContainer').classList.add('hidden');
-    document.getElementById('emptyState').classList.add('hidden');
-}
-
-function showError(message) {
-    hideAll();
-    document.getElementById('errorText').textContent = message;
-    document.getElementById('errorMessage').classList.remove('hidden');
-}
-
-function createVideoCard(video, index) {
-    const isError  = !video.success;
-    const name     = video.title || 'Unknown';
-    const thumbnail = video.thumbnail || '';
-    const videoUrl = video.download_url || '#';
-    
-    const card = document.createElement('div');
-    card.className = `card-hover bg-white/5 backdrop-blur-lg rounded-2xl overflow-hidden border-2 ${isError ? 'border-red-500/50' : 'border-purple-500/20'}`;
-    
-    const thumbnailHtml = !isError && thumbnail ? 
-        `<img src="${escapeHtml(thumbnail)}" alt="${escapeHtml(name)}" class="w-full h-48 object-cover group-hover:scale-110 transition-transform duration-500" onerror="this.parentElement.innerHTML='<div class=\\'w-full h-48 bg-gray-700 flex items-center justify-center\\'><svg class=\\'w-16 h-16 text-gray-500\\' fill=\\'none\\' stroke=\\'currentColor\\' viewBox=\\'0 0 24 24\\'><path d=\\'M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z\\' stroke-width=\\'2\\'/></svg></div>';">` :
-        `<div class="w-full h-48 bg-gray-700 flex items-center justify-center"><svg class="w-16 h-16 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" stroke-width="2"/></svg></div>`;
-    
-    const errorContent = isError ? 
-        `<div class="bg-red-500/20 border border-red-500/50 rounded-lg px-3 py-2 text-red-300 text-sm">❌ ${escapeHtml(video.error || 'Unknown error')}</div>` : '';
-    
-    const actionButtons = !isError ? `
-        <a href="${escapeHtml(videoUrl)}" target="_blank" rel="noopener noreferrer" class="block w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white py-3 rounded-xl font-bold transition-all text-center flex items-center justify-center gap-2 shadow-lg hover:shadow-purple-500/50">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-width="2"/><polygon points="10 8 16 12 10 16 10 8" fill="currentColor"/></svg>
-            <span>Tonton</span>
-        </a>` : '';
-    
-    card.innerHTML = `
-        <a href="${isError ? '#' : escapeHtml(videoUrl)}" target="_blank" rel="noopener noreferrer" class="block relative group overflow-hidden ${isError ? 'pointer-events-none' : ''}">
-            ${thumbnailHtml}
-            ${!isError ? '<div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center"><svg class="w-16 h-16 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-width="2"/><polygon points="10 8 16 12 10 16 10 8" fill="currentColor"/></svg></div>' : ''}
-        </a>
-        <div class="p-5 space-y-4">
-            <h3 class="text-white font-bold text-base line-clamp-2 min-h-[3rem]" title="${escapeHtml(name)}">${escapeHtml(name)}</h3>
-            ${errorContent}
-            ${!isError ? `
-                <div class="flex flex-wrap gap-2 text-xs font-semibold">
-                    <span class="bg-purple-500/30 text-purple-200 px-3 py-1.5 rounded-full border border-purple-400/30">🎬 Video</span>
-                    ${video.video_id ? `<span class="bg-blue-500/30 text-blue-200 px-3 py-1.5 rounded-full border border-blue-400/30">🆔 ${escapeHtml(video.video_id)}</span>` : ''}
-                </div>
-                ${actionButtons}
-            ` : ''}
-        </div>
-    `;
-    
-    return card;
-}
-
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
+$btnScan.addEventListener('click', scanAll);
 </script>
 
 </body>
